@@ -259,6 +259,9 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(
 /* Absorbs the slack the description and readout grow into. */
 .spacer { flex: 1; min-height: 14px; }
 
+.waiting {
+  margin: 4px 0 0; font-size: 13px; color: var(--ink-dim); text-wrap: pretty;
+}
 .note {
   margin: 12px 0 0; font-size: 11.5px; line-height: 1.5;
   color: var(--ink-faint); text-wrap: pretty;
@@ -347,6 +350,17 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(
 const $ = s => document.querySelector(s);
 let STATE = null, SELECTED = null;
 
+/* Connection watcher. The tablet is a USB cable away and gets plugged and
+   unplugged constantly, so the UI notices rather than making you press
+   Refresh. Polling is a cheap TCP probe, not a status read: a full read
+   opens an SSH session and hashes all eleven screens, which is far too
+   much to do every two seconds. Only a change in reachability triggers
+   one. */
+let CONNECTED = false;
+let watchTimer = null;
+const WATCH_IDLE = 2000;   // nothing attached: notice quickly
+const WATCH_LIVE = 8000;   // attached: only need to catch it going away
+
 /* Thumbnails are the expensive part of a refresh: each reads a whole PNG
    off the tablet over SFTP. Cache them by key so a redraw costs nothing
    and only screens we know have changed are refetched. */
@@ -399,20 +413,28 @@ function setReadouts(tablet, firmware, free, tabletKind, freeKind) {
 }
 setReadouts('-', '-', '-');
 
+function showDisconnected(label) {
+  CONNECTED = false;
+  setReadouts(label, '-', '-', 'bad');
+  $('#grid').innerHTML =
+    '<p class="waiting">No tablet detected. Connect one by USB and it will ' +
+    'appear here.</p>';
+  $('#lib-meta').textContent = '';
+  forgetAllThumbs();
+  inspectorEmpty();
+}
+
 async function load() {
   let r;
   try { r = await (await fetch('/api/status')).json(); }
   catch (e) {
-    setReadouts('Offline', '-', '-', 'bad');
-    forgetAllThumbs(); inspectorEmpty(); return;
+    showDisconnected('Offline'); return;
   }
   STATE = r;
   if (!r.connected) {
-    setReadouts('Not connected', '-', '-', 'bad');
-    $('#grid').innerHTML = `<p style="color:var(--err)">${r.detail || 'Tablet not connected.'}</p>`;
-    $('#lib-meta').textContent = '';
-    forgetAllThumbs(); inspectorEmpty(); return;
+    showDisconnected('Not connected'); return;
   }
+  CONNECTED = true;
   setReadouts(r.board, r.build, r.free_mb + ' MB', '', r.free_mb < 12 ? 'bad' : 'ok');
   const backed = r.screens.filter(x => x.has_backup).length;
   $('#lib-meta').textContent = `${r.screens.length} screens, ${backed} backed up`;
@@ -545,7 +567,7 @@ $('#btn-apply').onclick = doApply;
 $('#btn-restore').onclick = doRestore;
 /* Refresh is the deliberate re-read-everything action, so it is the one
    place the whole cache is dropped. */
-$('#btn-refresh').onclick = () => { forgetAllThumbs(); load(); };
+$('#btn-refresh').onclick = async () => { forgetAllThumbs(); await load(); schedule(); };
 $('#btn-backup').onclick = async () => {
   /* Capturing stock art reads screens but never writes one, so every
      cached thumbnail is still accurate. */
@@ -557,8 +579,36 @@ $('#btn-restore-all').onclick = async () => {
   load();
 };
 
-fixProse();
-load();
+async function reachable() {
+  try { return !!(await (await fetch('/api/ping')).json()).reachable; }
+  catch (e) { return false; }
+}
+
+async function watch() {
+  /* A hidden tab has nobody looking at it. Skip the probe and check again
+     when it comes back. */
+  if (!document.hidden) {
+    const up = await reachable();
+    if (up && !CONNECTED) await load();
+    else if (!up && CONNECTED) showDisconnected('Disconnected');
+  }
+  schedule();
+}
+
+function schedule() {
+  clearTimeout(watchTimer);
+  watchTimer = setTimeout(watch, CONNECTED ? WATCH_LIVE : WATCH_IDLE);
+}
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden) watch(); });
+
+/* Probe before the first full read: with nothing attached, /api/status
+   would sit through an SSH connect timeout before it could say so. */
+(async () => {
+  fixProse();
+  if (await reachable()) await load(); else showDisconnected('Not connected');
+  schedule();
+})();
 </script>
 </body>
 </html>

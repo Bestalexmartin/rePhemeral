@@ -8,6 +8,7 @@ tablet plugged into it. Do not bind it to a public interface.
 from __future__ import annotations
 
 import base64
+import socket
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -57,6 +58,32 @@ def _b64_png(data: bytes) -> str:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/api/ping")
+def ping() -> JSONResponse:
+    """Cheap reachability probe for the browser's connection watcher.
+
+    A bare TCP connect, deliberately not an SSH session. The watcher runs
+    every couple of seconds while nothing is attached, and opening an SSH
+    session at that rate would be wasteful on both ends.
+
+    It answers "is something listening", not "can we use it". Those differ:
+    before Developer Mode is enabled a Paper Pro accepts the connection and
+    then resets it. So a transition to reachable only prompts a full
+    /api/status read, which does the real work and reports a real error if
+    the tablet is there but unusable.
+    """
+    cfg = config.load()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1.0)
+    try:
+        sock.connect((cfg.host, cfg.port))
+        return JSONResponse({"reachable": True})
+    except OSError:
+        return JSONResponse({"reachable": False})
+    finally:
+        sock.close()
 
 
 @app.get("/api/status")

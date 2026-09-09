@@ -8,6 +8,26 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-09
+
+### Added
+
+- The web UI detects a tablet being connected or disconnected on its own,
+  and loads its screens without you pressing Refresh.
+- `GET /api/ping`, a cheap TCP reachability probe backing that watcher.
+
+### Notes
+
+- The watcher probes every 2 seconds while nothing is attached and every 8
+  while one is, and only a change in reachability triggers a full status
+  read. A status read opens an SSH session and hashes all eleven screens,
+  which is far too much to repeat on a poll.
+- Reachable is not the same as usable: before Developer Mode is enabled a
+  Paper Pro accepts the TCP connection and then resets it. The probe only
+  prompts the full read, which reports a real error in that case.
+- Probing is skipped while the browser tab is hidden and resumes when it
+  is shown again.
+
 ## [0.2.0] - 2026-09-09
 
 ### Changed
@@ -109,6 +129,7 @@ First working version.
   effect immediately: `xochitl` reads these PNGs when it needs to draw
   them rather than caching them at startup. No restart step is needed.
 
-[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Bestalexmartin/rePhemeral/releases/tag/v0.1.0
