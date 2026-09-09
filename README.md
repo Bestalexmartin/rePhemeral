@@ -1,5 +1,7 @@
 # rePhemeral
 
+![The rePhemeral interface: a library of the tablet's screens on the left, controls for the selected one on the right](docs/rephemeral-ui.png)
+
 Replace the sleep, boot and restart screens on a reMarkable Paper Pro, over
 a USB cable, from a small local web UI.
 
