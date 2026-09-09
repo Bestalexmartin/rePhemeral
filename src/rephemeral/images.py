@@ -11,7 +11,7 @@ they are flat vector-ish art. A photograph at panel size in RGBA can
 encode to several MB, and a handful of those fills the partition the
 tablet boots from. So encoding is not "save as PNG": it is a search for
 the smallest honest encoding that stays under the cap, escalating from
-plain compression through palette quantisation, and failing loudly rather
+plain compression through palette quantization, and failing loudly rather
 than writing something oversized.
 """
 from __future__ import annotations
@@ -65,7 +65,7 @@ def _load(data: bytes) -> Image.Image:
                 "export it to PNG at 1620x2160 (or larger) first and use that."
             ) from exc
         raise ImageError(f"could not read that file as an image: {exc}") from exc
-    # Honour EXIF rotation before anything else, or portrait photos from a
+    # Honor EXIF rotation before anything else, or portrait photos from a
     # phone arrive sideways and the crop is computed on the wrong axis.
     return ImageOps.exif_transpose(img)
 
@@ -136,21 +136,21 @@ def _encode(img: Image.Image, cap: int) -> tuple[bytes, str, list[str]]:
         return data, "RGB", notes
 
     notes.append(
-        f"full-colour encoding was {len(data) / 1024 / 1024:.1f} MB, "
-        f"over the {cap / 1024 / 1024:.0f} MB cap; reducing colours"
+        f"full-color encoding was {len(data) / 1024 / 1024:.1f} MB, "
+        f"over the {cap / 1024 / 1024:.0f} MB cap; reducing colors"
     )
-    for colours in _PALETTE_STEPS:
-        quant = img.quantize(colors=colours, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG)
+    for colors in _PALETTE_STEPS:
+        quant = img.quantize(colors=colors, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG)
         buf = io.BytesIO()
         quant.save(buf, format="PNG", optimize=True, compress_level=9)
         data = buf.getvalue()
         if len(data) <= cap:
-            notes.append(f"quantised to {colours} colours ({len(data) / 1024:.0f} KB)")
-            return data, f"P{colours}", notes
+            notes.append(f"quantized to {colors} colors ({len(data) / 1024:.0f} KB)")
+            return data, f"P{colors}", notes
 
     raise ImageError(
         f"this image cannot be encoded under the {cap / 1024 / 1024:.0f} MB cap "
-        f"even at 16 colours. It is probably photographic noise at full panel "
+        f"even at 16 colors. It is probably photographic noise at full panel "
         f"size. Try a simpler image, or reduce its detail before importing."
     )
 
@@ -160,7 +160,7 @@ def prepare(
     screen: Screen,
     fit: str = "cover",
     background: tuple[int, int, int] = (255, 255, 255),
-    greyscale: bool = False,
+    grayscale: bool = False,
     cap: int = MAX_IMAGE_BYTES,
 ) -> Prepared:
     """Convert `data` into a PNG sized and encoded for `screen`."""
@@ -169,9 +169,9 @@ def prepare(
 
     resized, notes = _resize(img, screen.width, screen.height, fit, background)
 
-    if greyscale:
+    if grayscale:
         resized = resized.convert("L").convert("RGB")
-        notes.append("converted to greyscale")
+        notes.append("converted to grayscale")
 
     encoded, mode, enc_notes = _encode(resized, cap)
     notes.extend(enc_notes)

@@ -13,7 +13,7 @@ Three rules prevent that:
    overwritten. A new build gets a new directory, because stock art can
    change between firmware releases, and old backups are kept.
 2. Every image the tool writes is recorded with its hash. Before
-   capturing, a file whose hash the tool recognises as its own is refused
+   capturing, a file whose hash the tool recognizes as its own is refused
    as a source. The tool will not launder its own output into a backup.
 3. Backups are written to the device and to the host. The device copy is
    authoritative for restore, since it travels with the tablet and

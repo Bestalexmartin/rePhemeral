@@ -102,7 +102,7 @@ def cmd_set(args: argparse.Namespace) -> int:
         applier = Applier(d, store)
         result = applier.apply(
             screen, path.read_bytes(), source=path.name,
-            fit=args.fit, greyscale=args.greyscale,
+            fit=args.fit, grayscale=args.grayscale,
         )
         if result.backed_up_now:
             print(f"Stock {screen.key} captured to backup first.")
@@ -183,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("screen")
     s.add_argument("image")
     s.add_argument("--fit", default="cover", choices=("cover", "contain", "stretch"))
-    s.add_argument("--greyscale", action="store_true")
+    s.add_argument("--grayscale", action="store_true")
     s.add_argument("--restart", action="store_true",
                help="restart the tablet UI after (not needed for screen changes)")
     s.add_argument("--force", action="store_true", help="allow diagnostic screens")

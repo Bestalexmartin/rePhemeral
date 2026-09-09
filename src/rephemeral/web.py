@@ -113,7 +113,7 @@ async def apply_screen(
     key: str,
     file: UploadFile = File(...),
     fit: str = Form("cover"),
-    greyscale: bool = Form(False),
+    grayscale: bool = Form(False),
 ) -> JSONResponse:
     screen = _screen(key)
     raw = await file.read()
@@ -123,7 +123,7 @@ async def apply_screen(
         store = BackupStore(d, build=info.build, board=info.board)
         result = Applier(d, store).apply(
             screen, raw, source=file.filename or "upload",
-            fit=fit, greyscale=greyscale,
+            fit=fit, grayscale=grayscale,
         )
         return JSONResponse({
             "ok": True,

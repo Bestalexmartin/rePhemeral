@@ -2,7 +2,7 @@
 #
 # Extends the gitleaks default ruleset. Additions here are for the two
 # device-specific credentials this project handles, neither of which the
-# default rules would recognise on their own.
+# default rules would recognize on their own.
 [extend]
 useDefault = true
 

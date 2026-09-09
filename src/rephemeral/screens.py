@@ -1,4 +1,4 @@
-"""The catalogue of replaceable screens on a reMarkable Paper Pro.
+"""The catalog of replaceable screens on a reMarkable Paper Pro.
 
 Everything here was measured on a device running firmware build
 20260827113527 (v3.28.0.172), not taken from documentation. reMarkable
@@ -41,12 +41,12 @@ class Screen:
     width: int
     height: int
 
-    greyscale: bool = False
+    grayscale: bool = False
     """True where stock art is 8-bit single-channel rather than RGBA.
 
-    The Paper Pro is a colour panel and accepts RGBA everywhere, so this
+    The Paper Pro is a color panel and accepts RGBA everywhere, so this
     is descriptive of the stock asset rather than a constraint we must
-    honour. It matters only when reporting drift: a greyscale original
+    honor. It matters only when reporting drift: a grayscale original
     replaced by RGBA is an expected difference, not corruption.
     """
 
@@ -126,11 +126,11 @@ SCREENS: tuple[Screen, ...] = (
         label="Remote wipe",
         description=(
             "Shown while the device is being erased remotely. Stock art is "
-            "greyscale. Replacing it hides a security-relevant event."
+            "grayscale. Replacing it hides a security-relevant event."
         ),
         width=PANEL_WIDTH,
         height=PANEL_HEIGHT,
-        greyscale=True,
+        grayscale=True,
         risky=True,
     ),
     Screen(

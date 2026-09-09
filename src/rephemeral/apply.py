@@ -41,13 +41,13 @@ class Applier:
         source: str = "upload",
         fit: str = "cover",
         background: tuple[int, int, int] = (255, 255, 255),
-        greyscale: bool = False,
+        grayscale: bool = False,
     ) -> ApplyResult:
         """Convert and write one image, capturing stock art first."""
         # 1. Convert before touching the device. A conversion failure
         #    should cost nothing, and must not leave the rootfs remounted.
         prepared: Prepared = prepare(
-            image_bytes, screen, fit=fit, background=background, greyscale=greyscale
+            image_bytes, screen, fit=fit, background=background, grayscale=grayscale
         )
 
         # 2. Capture stock art. Raises rather than proceeding: a write

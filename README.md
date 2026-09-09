@@ -14,7 +14,7 @@ the way to somewhere else. This makes them yours.
 
 The Paper Pro will not accept SSH connections until Developer Mode is
 enabled, and enabling it triggers a factory reset. This is reMarkable's
-behaviour, tied to the secure boot chain, and nothing here can work around
+behavior, tied to the secure boot chain, and nothing here can work around
 it.
 
 So before you enable it:
@@ -112,7 +112,7 @@ rephemeral status                          # device, free space, per-screen stat
 rephemeral screens                         # what can be replaced
 rephemeral backup                          # capture stock art now
 rephemeral set suspended ~/art.png         # replace the sleep screen
-rephemeral set suspended ~/art.png --fit contain --greyscale
+rephemeral set suspended ~/art.png --fit contain --grayscale
 rephemeral restore suspended               # put the stock image back
 rephemeral restore --all
 ```
@@ -148,7 +148,7 @@ Three rules keep the stock art safe:
    art can change between releases, and old backups are kept.
 2. **The tool will not launder its own output.** Every image it writes is
    recorded by hash. If it is ever asked to capture "stock" art whose hash
-   it recognises as something it wrote, it refuses, because recording a
+   it recognizes as something it wrote, it refuses, because recording a
    custom image as stock would destroy the only copy of the original.
 3. **Backup before write, every time.** Not at install time and not on a
    best-effort basis. If the capture fails, the write does not happen.
@@ -168,7 +168,7 @@ Run `rephemeral status` after an update. Screens that reverted will read
 
 ## Safety limits
 
-- **Per-image cap of 4 MB.** Photographic images are quantised down to fit
+- **Per-image cap of 4 MB.** Photographic images are quantized down to fit
   and rejected if they still do not.
 - **Free-space floor of 8 MB on `/`.** A stock device has around 41 MB
   free. Filling the partition the tablet boots from is not recoverable
@@ -199,6 +199,10 @@ not bind it to a public interface.
 To remove the tool's access, delete its key from
 `/home/root/.ssh/authorized_keys` on the tablet.
 
+## Changelog
+
+Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
 Run `./scripts/setup-hooks.sh` after cloning. It installs a fail-closed
@@ -208,13 +212,13 @@ private key.
 
 Please do not commit artwork captured from a device.
 
-## Licence
+## License
 
 GNU General Public License v3.0 or later. See `LICENSE`.
 
 Copyleft is a deliberate choice here rather than a default. This tool
 exists because the Paper Pro puts shell access behind a switch that erases
-the device, and GPLv3 is the licence written to stop hardware from being
+the device, and GPLv3 is the license written to stop hardware from being
 locked against the people who own it. Anything built on this stays open
 for the same reason this was written.
 
