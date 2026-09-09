@@ -259,14 +259,21 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(
 /* Absorbs the slack the description and readout grow into. */
 .spacer { flex: 1; min-height: 14px; }
 
+/* This message lives inside the tile grid, so without spanning it would
+   be laid out as a grid item and squeezed into a single ~148px column,
+   wrapping to three lines. */
 .waiting {
-  margin: 4px 0 0; font-size: 13px; color: var(--ink-dim); text-wrap: pretty;
+  grid-column: 1 / -1;
+  margin: 4px 0 0; font-size: 13px; color: var(--ink-dim); white-space: nowrap;
 }
 .note {
   margin: 12px 0 0; font-size: 11.5px; line-height: 1.5;
   color: var(--ink-faint); text-wrap: pretty;
 }
 .note span { display: block; }
+/* A hair of space between sentences. Without it the deliberate break
+   between them reads as an accidental word wrap. */
+.note span + span { margin-top: 4px; }
 
 /* Below this the two columns cannot both hold their width, so the page
    reverts to an ordinary scrolling document. */
@@ -404,12 +411,13 @@ const readout = (lbl, val, kind) =>
    nothing to report. The header keeps its shape whether or not a tablet
    is attached. */
 function setReadouts(tablet, firmware, free, tabletKind, freeKind) {
-  /* Shortest value first, longest last, so the row's ragged edge falls
-     away from the wordmark rather than against it. */
+  /* Tablet sits last because its value varies most: a dash, a board name,
+     or "Not connected". Putting the widest-swinging field at the outside
+     edge keeps that movement away from the fields beside it. */
   $('#readouts').innerHTML =
     readout('Root free', free, freeKind) +
-    readout('Tablet', tablet, tabletKind) +
-    readout('Firmware', firmware);
+    readout('Firmware', firmware) +
+    readout('Tablet', tablet, tabletKind);
 }
 setReadouts('-', '-', '-');
 
@@ -580,8 +588,25 @@ $('#btn-restore-all').onclick = async () => {
 };
 
 async function reachable() {
-  try { return !!(await (await fetch('/api/ping')).json()).reachable; }
-  catch (e) { return false; }
+  try {
+    const r = await fetch('/api/ping');
+    const d = await r.json();
+    /* A response without this field is not a disconnected tablet, it is a
+       broken probe: most likely a server process older than the endpoint,
+       since uvicorn loads routes once at import while the page HTML is
+       read from disk per request. Left unsaid, that looks exactly like a
+       tablet that never connects. */
+    if (typeof d.reachable !== 'boolean') {
+      console.warn('rePhemeral: /api/ping returned', r.status, d,
+                   '- restart the server (routes load at import; only the ' +
+                   'page HTML is re-read per request).');
+      return false;
+    }
+    return d.reachable;
+  } catch (e) {
+    console.warn('rePhemeral: /api/ping failed', e);
+    return false;
+  }
 }
 
 async function watch() {

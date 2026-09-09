@@ -8,6 +8,28 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-09
+
+### Changed
+
+- Header readouts reordered to Root free, Firmware, Tablet. Tablet holds
+  the widest-swinging value, from a dash to a board name to "Not
+  connected", so it sits at the outside edge where that movement disturbs
+  nothing beside it.
+- A little air between the two sentences of the rail's standing note, so
+  the deliberate break does not read as an accidental word wrap.
+
+### Fixed
+
+- The "no tablet detected" message wrapped to three lines. It lives inside
+  the tile grid, so it was being laid out as a grid item and squeezed into
+  one column; it now spans them.
+- A malformed reply from `/api/ping` was indistinguishable from a
+  disconnected tablet, and reported one forever. It now says so in the
+  browser console. The likely cause is a server process older than the
+  endpoint, since uvicorn loads routes once at import while the page HTML
+  is re-read per request.
+
 ## [0.3.0] - 2026-09-09
 
 ### Added
@@ -129,7 +151,8 @@ First working version.
   effect immediately: `xochitl` reads these PNGs when it needs to draw
   them rather than caching them at startup. No restart step is needed.
 
-[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Bestalexmartin/rePhemeral/releases/tag/v0.1.0
