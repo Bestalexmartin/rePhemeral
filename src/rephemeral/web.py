@@ -121,6 +121,13 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/favicon.png", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Served from the package rather than linked externally, so the page
+    still makes no request off this machine."""
+    return FileResponse(STATIC / "favicon.png", media_type="image/png")
+
+
 @app.get("/api/ping")
 def ping() -> JSONResponse:
     """Cheap reachability probe for the browser's connection watcher.

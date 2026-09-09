@@ -177,9 +177,40 @@ def cmd_ui(args: argparse.Namespace) -> int:
     except ImportError:
         print("The web UI needs uvicorn: pip install rephemeral", file=sys.stderr)
         return 1
-    from .web import app
-    print(f"rePhemeral UI on http://{args.bind}:{args.port}")
-    uvicorn.run(app, host=args.bind, port=args.port, log_level="warning")
+
+    from . import __version__
+
+    # Printed so a stale process is visible. The page HTML is read from disk
+    # per request while routes are imported once, so an old server serves
+    # new markup against old endpoints, which looks like a broken feature
+    # rather than a stale server.
+    print(f"rePhemeral {__version__} on http://{args.bind}:{args.port}")
+
+    if not args.reload:
+        from .web import app
+        uvicorn.run(app, host=args.bind, port=args.port, log_level="warning")
+        return 0
+
+    # Reload is opt-in, not the default. The reloader restarts the server
+    # whenever a watched file changes, and a restart during a write would
+    # drop the SSH session mid-remount, leaving the tablet's root
+    # filesystem writable. That is a development convenience, not something
+    # to impose on someone replacing a sleep screen.
+    package = Path(__file__).resolve().parent
+    print(f"  auto-reload on, watching {package}")
+    uvicorn.run(
+        # Reload needs an import string: the worker is a subprocess and has
+        # to import the app itself.
+        "rephemeral.web:app",
+        host=args.bind,
+        port=args.port,
+        log_level="warning",
+        reload=True,
+        reload_dirs=[str(package)],
+        # Static files are re-read from disk per request, so a restart for
+        # them would be churn with no effect.
+        reload_excludes=["*.html", "*.png"],
+    )
     return 0
 
 
@@ -226,6 +257,9 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("ui", help="run the local web interface")
     s.add_argument("--bind", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--reload", action="store_true",
+                   help="restart on source changes (development; a restart "
+                        "mid-write would drop the SSH session)")
     s.set_defaults(func=cmd_ui)
 
     args = p.parse_args(argv)

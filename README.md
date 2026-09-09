@@ -120,6 +120,20 @@ rephemeral restore --all
 rephemeral inspector                       # diagnose environment and link
 ```
 
+The page's HTML is read from disk on every request, but routes are imported
+once at startup. An old server therefore serves new markup against old
+endpoints, which looks like a broken feature rather than a stale process.
+`rephemeral ui` prints its version so that is visible, and while working on
+the tool itself:
+
+```bash
+rephemeral ui --reload      # restart on source changes
+```
+
+Reload is off by default on purpose. A restart triggered mid-write would
+drop the SSH session during a remount, leaving the tablet's root filesystem
+writable.
+
 ## How it works
 
 The tablet exposes USB ethernet, serves DHCP, and answers on `10.11.99.1`.

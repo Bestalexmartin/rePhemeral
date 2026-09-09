@@ -24,6 +24,8 @@ originals/
 *.jpg
 *.jpeg
 !docs/**/*.png
+# The app's own tab icon, which ships inside the package.
+!src/rephemeral/static/*.png
 
 # --- Python ---------------------------------------------------------
 __pycache__/

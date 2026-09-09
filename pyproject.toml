@@ -1,6 +1,6 @@
 [project]
 name = "rephemeral"
-version = "0.5.0"
+version = "0.6.0"
 description = "Replace the sleep and restart screens on a reMarkable Paper Pro over USB."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-rephemeral = ["static/*.html"]
+rephemeral = ["static/*.html", "static/*.png"]
 
 [tool.ruff]
 line-length = 100

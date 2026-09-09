@@ -8,6 +8,25 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-09
+
+### Added
+
+- An application icon in the browser tab. Served from the package at
+  `/favicon.png`, so the page still makes no request off the machine.
+- `rephemeral ui --reload` restarts the server on source changes, and
+  `rephemeral ui` now prints its version at startup. Reload is off by
+  default: a restart triggered mid-write would drop the SSH session during
+  a remount, leaving the tablet's root filesystem writable. The reloader
+  ignores the static directory, whose files are re-read per request anyway.
+
+### Notes
+
+- The version line exists because routes are imported once at startup while
+  the page HTML is read from disk per request. A server older than a route
+  serves new markup against endpoints that do not exist, which presents as
+  a broken feature rather than a stale process.
+
 ## [0.5.0] - 2026-09-09
 
 A review pass, independently verified here against a live tablet. Two of
@@ -260,7 +279,8 @@ First working version.
   effect immediately: `xochitl` reads these PNGs when it needs to draw
   them rather than caching them at startup. No restart step is needed.
 
-[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.0...v0.3.1
