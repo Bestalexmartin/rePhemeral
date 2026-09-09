@@ -199,6 +199,69 @@ not bind it to a public interface.
 To remove the tool's access, delete its key from
 `/home/root/.ssh/authorized_keys` on the tablet.
 
+## Roadmap
+
+Nothing here is promised. It is what the project would sensibly do next,
+and where help would actually help.
+
+### Other reMarkable models
+
+Paper Pro only, today. Every fact this tool relies on was measured on one
+device running one firmware build: the screen list, the 1620x2160 panel
+geometry, the paths under `/usr/share/remarkable`, and the fact that the
+rootfs is plain ext4 with no dm-verity.
+
+The earlier tablets differ in ways that matter. They run a 1404x1872
+panel, they are greyscale, and they do not gate SSH behind a Developer
+Mode switch that erases the device, so the hardest part of using this
+tool on a Paper Pro does not apply to them at all.
+
+Structurally the work is small: `screens.py` already holds the catalog as
+data, so most of it is a per-model table plus a detection step. What it
+actually needs is someone with the hardware to verify the paths rather
+than assume they carried over. Contributions welcome, particularly with a
+`/etc/version` and a directory listing attached.
+
+### Windows and Linux
+
+Probably already works on Linux, plausibly on Windows, but neither has
+been tested.
+
+The Python side carries no host platform assumptions. There are no
+`subprocess` calls, host paths are built with `pathlib` rather than
+strung together, device paths use `posixpath` because the tablet is
+always Linux, and every shell command in the codebase runs on the tablet
+rather than on your machine. Nothing needs a POSIX shell locally.
+
+What stands between that and a supported claim:
+
+- **The USB network interface.** The tablet presents itself as a USB
+  ethernet device and serves DHCP on `10.11.99.1`. Linux handles this in
+  the kernel. Windows generally does, though it is the part most likely
+  to need attention.
+- **Key permissions on Windows.** The generated SSH key is written with
+  mode `600`. Windows cannot express that through `chmod`, so the key
+  would sit readable by other accounts on a shared machine. That wants
+  proper ACL handling before Windows is called supported.
+- **Config locations.** `~/.config` and `~/.local/share` are the right
+  homes on Linux and work on Windows, but `%APPDATA%` is what a Windows
+  user would expect.
+
+If you run it on either, an issue saying what happened is useful whether
+it worked or not.
+
+### A standalone application
+
+Today this needs a Python environment, a virtualenv, and a terminal to
+start the UI. That is a reasonable ask of a developer and an unreasonable
+one of somebody who just wants a different sleep screen.
+
+The shape that fits is a single application that starts the local server
+and opens the interface itself, with no visible Python. The backend is
+already a self-contained FastAPI app with no external services and no
+network access beyond the USB link, which is the part that usually makes
+this hard.
+
 ## Changelog
 
 Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
