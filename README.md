@@ -115,6 +115,7 @@ rephemeral set suspended ~/art.png         # replace the sleep screen
 rephemeral set suspended ~/art.png --fit contain --grayscale
 rephemeral restore suspended               # put the stock image back
 rephemeral restore --all
+rephemeral inspector                       # diagnose environment and link
 ```
 
 ## How it works

@@ -6,7 +6,7 @@ import getpass
 import sys
 from pathlib import Path
 
-from . import config, screens
+from . import config, inspector, screens
 from .apply import Applier
 from .backup import BackupStore
 from .device import Device, DeviceError
@@ -147,6 +147,27 @@ def cmd_screens(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Report on every layer between here and the tablet."""
+    checks = inspector.run()
+    width = max(len(c.name) for c in checks)
+    for c in checks:
+        print(f"  {c.status:<4}  {c.name:<{width}}  {c.detail}")
+    failed = [c for c in checks if c.status == inspector.FAIL]
+    warned = [c for c in checks if c.status == inspector.WARN]
+    print()
+    if failed:
+        print(f"{len(failed)} failed, {len(warned)} warning(s). "
+              f"The first failure is usually the only real one; the checks "
+              f"below it are skipped rather than run.")
+        return 1
+    if warned:
+        print(f"No failures, {len(warned)} warning(s).")
+        return 0
+    print("All checks passed.")
+    return 0
+
+
 def cmd_ui(args: argparse.Namespace) -> int:
     try:
         import uvicorn
@@ -194,6 +215,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--all", action="store_true")
     s.add_argument("--restart", action="store_true")
     s.set_defaults(func=cmd_restore)
+
+    s = sub.add_parser("inspector",
+                       help="diagnose the environment, the link and the tablet")
+    s.set_defaults(func=cmd_inspect)
 
     s = sub.add_parser("ui", help="run the local web interface")
     s.add_argument("--bind", default="127.0.0.1")

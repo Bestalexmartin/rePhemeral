@@ -8,6 +8,30 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-09
+
+### Added
+
+- `rephemeral inspector`, a read-only diagnosis of every layer between
+  your machine and the tablet: Python version, dependencies, config, SSH
+  key and its permissions, whether the USB network interface came up,
+  whether anything is listening, whether SSH authenticates, and then the
+  firmware build, free space, screen presence and backup coverage.
+- A roadmap in the README covering other reMarkable models, Windows and
+  Linux support, and a standalone application.
+
+### Notes
+
+- The inspector exists because this tool spans four layers that fail
+  differently, and "could not connect to 10.11.99.1" does not say which
+  one broke. On a machine other than the one it was developed on, that is
+  the only question worth answering.
+- Checks stop at the first failure and mark the rest skipped, rather than
+  reporting a cascade of consequences as though they were separate faults.
+- It detects the USB interface by asking the OS which local address would
+  route to the tablet, rather than shelling out to `ifconfig` or `ip`,
+  neither of which exists everywhere. Nothing is written to the tablet.
+
 ## [0.3.1] - 2026-09-09
 
 ### Changed
@@ -151,7 +175,8 @@ First working version.
   effect immediately: `xochitl` reads these PNGs when it needs to draw
   them rather than caching them at startup. No restart step is needed.
 
-[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.1.0...v0.2.0
