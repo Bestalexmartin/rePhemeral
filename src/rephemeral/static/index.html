@@ -211,6 +211,7 @@ select {
 select:hover:not(:disabled), input[type=file]:hover:not(:disabled) {
   border-color: var(--line-strong);
 }
+input[type=file]::file-selector-button { margin-inline-end: 14px; }
 select:disabled, input[type=file]:disabled { opacity: .45; cursor: default; }
 
 button {
@@ -264,7 +265,7 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(
    wrapping to three lines. */
 .waiting {
   grid-column: 1 / -1;
-  margin: 4px 0 0; font-size: 13px; color: var(--ink-dim); white-space: nowrap;
+  margin: 4px 0 0; font-size: 13px; color: var(--ink-dim); white-space: normal;
 }
 .note {
   margin: 12px 0 0; font-size: 11.5px; line-height: 1.5;
@@ -333,7 +334,7 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(
 
       <div class="spacer"></div>
 
-      <div id="msg" class="idle">Standing by</div>
+      <div id="msg" class="idle" role="status" aria-live="polite">Standing by</div>
 
       <div class="rule"></div>
       <div class="grouplbl">All screens</div>
@@ -355,7 +356,8 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(
 
 <script>
 const $ = s => document.querySelector(s);
-let STATE = null, SELECTED = null;
+let STATE = null, SELECTED = null, BUSY = false;
+let loadPromise = null, thumbGeneration = 0;
 
 /* Connection watcher. The tablet is a USB cable away and gets plugged and
    unplugged constantly, so the UI notices rather than making you press
@@ -373,7 +375,7 @@ const WATCH_LIVE = 8000;   // attached: only need to catch it going away
    and only screens we know have changed are refetched. */
 const THUMBS = {};
 const forgetThumb = k => { delete THUMBS[k]; };
-const forgetAllThumbs = () => { for (const k of Object.keys(THUMBS)) delete THUMBS[k]; };
+const forgetAllThumbs = () => { thumbGeneration++; for (const k of Object.keys(THUMBS)) delete THUMBS[k]; };
 
 /* Keep at least three words on a block's last line. Joining the final
    three with non-breaking spaces means a wrap can never strand one or two
@@ -403,9 +405,15 @@ function tag(state) {
   return { cls: 'changed', text: 'Changed' };
 }
 
+function escapeHTML(value) {
+  const el = document.createElement('span');
+  el.textContent = String(value);
+  return el.innerHTML;
+}
+
 const readout = (lbl, val, kind) =>
   `<div class="readout"><span class="lbl">${lbl}</span>` +
-  `<span class="val ${kind || ''}">${val}</span></div>`;
+  `<span class="val ${kind || ''}">${escapeHTML(val)}</span></div>`;
 
 /* All three readouts are always present, showing a dash where there is
    nothing to report. The header keeps its shape whether or not a tablet
@@ -432,21 +440,27 @@ function showDisconnected(label) {
   inspectorEmpty();
 }
 
-async function load() {
+function load() {
+  if (!loadPromise) loadPromise = loadStatus().finally(() => { loadPromise = null; });
+  return loadPromise;
+}
+
+async function loadStatus() {
   let r;
-  try { r = await (await fetch('/api/status')).json(); }
+  try { r = await request('/api/status'); }
   catch (e) {
-    showDisconnected('Offline'); return;
+    showDisconnected('Offline'); msg(e.message, 'err'); return;
   }
   STATE = r;
   if (!r.connected) {
-    showDisconnected('Not connected'); return;
+    showDisconnected('Not connected'); msg(r.detail || 'Tablet unavailable.', 'err'); return;
   }
   CONNECTED = true;
   setReadouts(r.board, r.build, r.free_mb + ' MB', '', r.free_mb < 12 ? 'bad' : 'ok');
   const backed = r.screens.filter(x => x.has_backup).length;
   $('#lib-meta').textContent = `${r.screens.length} screens, ${backed} backed up`;
   renderGrid();
+  updateControls();
   if (!SELECTED || !r.screens.some(x => x.key === SELECTED)) inspectorEmpty();
 }
 
@@ -463,14 +477,22 @@ function renderGrid() {
        <div class="name">${s.label}</div>
        <div class="sub"><span class="tag ${t.cls}">${t.text}</span>` +
       `${s.risky ? '<span class="diag">diagnostic</span>' : ''}</div>`;
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    el.setAttribute('aria-pressed', String(SELECTED === s.key));
     el.onclick = () => select(s.key);
+    el.onkeydown = e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(s.key); }
+    };
     g.appendChild(el);
 
     const slot = g.querySelector(`[data-thumb="${s.key}"]`);
     if (THUMBS[s.key]) { slot.innerHTML = `<img src="${THUMBS[s.key]}" alt="">`; continue; }
+    const generation = thumbGeneration;
     fetch(`/api/screen/${s.key}/current`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
+        if (generation !== thumbGeneration) return;
         const w = g.querySelector(`[data-thumb="${s.key}"]`);
         if (d && d.image) {
           THUMBS[s.key] = d.image;
@@ -484,6 +506,7 @@ function renderGrid() {
 /* Controls hold their place and ghost out until a screen is chosen, so
    the column keeps its shape. */
 function setControls(on, hasBackup) {
+  on = on && CONNECTED && !BUSY;
   for (const id of ['f', 'fit', 'gs']) $('#' + id).disabled = !on;
   $('#btn-restore').disabled = !(on && hasBackup);
   syncApply();
@@ -492,19 +515,27 @@ function setControls(on, hasBackup) {
 
 /* Apply needs a screen and a file. Nothing else gates it. */
 function syncApply() {
-  $('#btn-apply').disabled = !(SELECTED && $('#f').files.length);
+  $('#btn-apply').disabled = !(CONNECTED && !BUSY && SELECTED && $('#f').files.length);
+}
+
+function updateControls() {
+  const selected = STATE?.screens?.find(s => s.key === SELECTED);
+  setControls(!!selected, selected?.has_backup);
+  for (const id of ['btn-backup', 'btn-restore-all']) $('#' + id).disabled = !CONNECTED || BUSY;
+  $('#btn-refresh').disabled = BUSY;
 }
 
 function inspectorEmpty() {
   SELECTED = null;
   $('#insp-title').textContent = 'No screen selected';
   $('#desc').innerHTML = '<span>Select a screen to replace or restore it.</span>';
-  setControls(false, false);
+  updateControls();
   msgIdle(); fixProse();
   document.querySelectorAll('.tile').forEach(t => t.classList.remove('sel'));
 }
 
 function select(key) {
+  if (BUSY) return;
   SELECTED = key;
   const s = STATE.screens.find(x => x.key === key);
   $('#insp-title').textContent = s.label;
@@ -519,7 +550,10 @@ function select(key) {
   /* Toggle in place. Re-rendering the grid here would refetch every
      thumbnail over SSH and visibly reload the whole library. */
   document.querySelectorAll('.tile').forEach(
-    t => t.classList.toggle('sel', t.dataset.key === key));
+    t => {
+      t.classList.toggle('sel', t.dataset.key === key);
+      t.setAttribute('aria-pressed', String(t.dataset.key === key));
+    });
 }
 
 function formData() {
@@ -535,7 +569,7 @@ function formData() {
 function msg(text, kind) {
   const el = $('#msg');
   el.className = kind || '';
-  el.innerHTML = text;
+  el.textContent = text;
 }
 function msgIdle() {
   const el = $('#msg');
@@ -543,49 +577,69 @@ function msgIdle() {
   el.textContent = 'Standing by';
 }
 
+async function request(url, options) {
+  const response = await fetch(url, options);
+  let data;
+  try { data = await response.json(); }
+  catch { throw new Error(`Server returned ${response.status} without a readable response.`); }
+  if (!response.ok) throw new Error(data.detail || `Request failed (${response.status}).`);
+  return data;
+}
+
+async function operation(progress, action) {
+  if (BUSY) return;
+  BUSY = true;
+  updateControls();
+  msg(progress);
+  try { await action(); }
+  catch (e) { msg(e.message || 'Connection failed. Refresh to check the tablet.', 'err'); }
+  finally { BUSY = false; updateControls(); schedule(); }
+}
+
 async function doApply() {
-  const fd = formData(); if (!fd) return;
-  $('#btn-apply').disabled = true;
-  msg('Writing to tablet');
-  const r = await fetch(`/api/screen/${SELECTED}/apply`, { method: 'POST', body: fd });
-  const d = await r.json();
-  if (!r.ok) { msg(d.detail || 'Apply failed.', 'err'); syncApply(); return; }
-  let out = `Written, ${d.size_kb} KB.` +
-            (d.backed_up_now ? ' Stock captured to backup first.' : '') +
-            ' Live now.';
-  /* What the conversion did. With no preview step this is the only place
-     it is reported. */
-  if (d.notes && d.notes.length) out += ' · ' + d.notes.join(' · ');
-  msg(out, 'ok');
-  forgetThumb(SELECTED);   // only this screen's image changed
-  load();
+  const key = SELECTED;
+  const fd = formData(); if (!key || !fd) return;
+  await operation('Writing to tablet', async () => {
+    const d = await request(`/api/screen/${key}/apply`, { method: 'POST', body: fd });
+    forgetThumb(key);
+    await load();
+    msg(`Written, ${d.size_kb} KB.` +
+        (d.backed_up_now ? ' Stock captured to backup first.' : '') +
+        ' Live now.' + (d.notes?.length ? ' · ' + d.notes.join(' · ') : ''), 'ok');
+  });
 }
 
 async function doRestore() {
-  msg('Restoring');
-  const r = await fetch(`/api/screen/${SELECTED}/restore`, { method: 'POST' });
-  const d = await r.json();
-  msg(r.ok ? 'Stock image restored.' : (d.detail || 'Restore failed.'), r.ok ? 'ok' : 'err');
-  if (r.ok) forgetThumb(SELECTED);
-  load();
+  const key = SELECTED;
+  if (!key) return;
+  await operation('Restoring', async () => {
+    await request(`/api/screen/${key}/restore`, { method: 'POST' });
+    forgetThumb(key);
+    await load();
+    msg('Stock image restored.', 'ok');
+  });
+}
+
+async function batch(url, progress, invalidate) {
+  await operation(progress, async () => {
+    const d = await request(url, { method: 'POST' });
+    if (invalidate) forgetAllThumbs();
+    await load();
+    const entries = Object.entries(d.results);
+    const failed = entries.some(([, value]) => value.startsWith('FAILED:'));
+    msg(entries.map(([key, value]) => `${key}: ${value}`).join(' · '), failed ? 'err' : 'ok');
+  });
 }
 
 $('#f').onchange = syncApply;
 $('#btn-apply').onclick = doApply;
 $('#btn-restore').onclick = doRestore;
-/* Refresh is the deliberate re-read-everything action, so it is the one
-   place the whole cache is dropped. */
-$('#btn-refresh').onclick = async () => { forgetAllThumbs(); await load(); schedule(); };
-$('#btn-backup').onclick = async () => {
-  /* Capturing stock art reads screens but never writes one, so every
-     cached thumbnail is still accurate. */
-  const r = await fetch('/api/backup', { method: 'POST' }); await r.json(); load();
-};
-$('#btn-restore-all').onclick = async () => {
-  const r = await fetch('/api/restore-all', { method: 'POST' }); await r.json();
-  forgetAllThumbs();     // this one can rewrite every screen
-  load();
-};
+$('#btn-refresh').onclick = () => operation('Refreshing', async () => {
+  forgetAllThumbs(); await load();
+  if (CONNECTED) msg('Refreshed.', 'ok');
+});
+$('#btn-backup').onclick = () => batch('/api/backup', 'Backing up stock', false);
+$('#btn-restore-all').onclick = () => batch('/api/restore-all', 'Restoring all screens', true);
 
 async function reachable() {
   try {
@@ -612,7 +666,7 @@ async function reachable() {
 async function watch() {
   /* A hidden tab has nobody looking at it. Skip the probe and check again
      when it comes back. */
-  if (!document.hidden) {
+  if (!document.hidden && !BUSY && !loadPromise) {
     const up = await reachable();
     if (up && !CONNECTED) await load();
     else if (!up && CONNECTED) showDisconnected('Disconnected');
@@ -631,6 +685,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) watc
    would sit through an SSH connect timeout before it could say so. */
 (async () => {
   fixProse();
+  updateControls();
   if (await reachable()) await load(); else showDisconnected('Not connected');
   schedule();
 })();

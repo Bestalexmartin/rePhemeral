@@ -81,6 +81,8 @@ def _flatten(img: Image.Image, background: tuple[int, int, int]) -> Image.Image:
     silent. Compositing explicitly makes the background option mean what
     it says.
     """
+    if "transparency" in img.info:
+        img = img.convert("RGBA")
     if img.mode == "P":
         img = img.convert("RGBA") if "transparency" in img.info else img.convert("RGB")
     if img.mode in ("RGBA", "LA"):
@@ -133,7 +135,7 @@ def _encode(img: Image.Image, cap: int) -> tuple[bytes, str, list[str]]:
     img.save(buf, format="PNG", optimize=True, compress_level=9)
     data = buf.getvalue()
     if len(data) <= cap:
-        return data, "RGB", notes
+        return data, img.mode, notes
 
     notes.append(
         f"full-color encoding was {len(data) / 1024 / 1024:.1f} MB, "
@@ -170,7 +172,7 @@ def prepare(
     resized, notes = _resize(img, screen.width, screen.height, fit, background)
 
     if grayscale:
-        resized = resized.convert("L").convert("RGB")
+        resized = resized.convert("L")
         notes.append("converted to grayscale")
 
     encoded, mode, enc_notes = _encode(resized, cap)

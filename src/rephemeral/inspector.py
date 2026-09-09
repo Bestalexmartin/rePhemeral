@@ -11,6 +11,7 @@ Every check is read-only and none of them writes to the tablet.
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import socket
 import stat
@@ -102,8 +103,8 @@ def _route(cfg: config.Config) -> Check:
                      f"the OS bound a driver to the device.")
     finally:
         s.close()
-    expected = cfg.host.rsplit(".", 1)[0]
-    if local.startswith(expected.rsplit(".", 1)[0]):
+    network = ipaddress.ip_network(f"{socket.gethostbyname(cfg.host)}/24", strict=False)
+    if ipaddress.ip_address(local) in network:
         return Check("USB network", OK, f"local address {local} reaches {cfg.host}")
     return Check("USB network", WARN,
                  f"{cfg.host} routes via {local}, which is not on the tablet's "

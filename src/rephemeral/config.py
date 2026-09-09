@@ -8,23 +8,24 @@ credential would be wrong as well as unsafe.
 """
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from shlex import quote as _q
 
 import paramiko
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
+from .device import DEFAULT_HOST, DEFAULT_USER, Device
 
 CONFIG_DIR = Path(
     os.environ.get("REPHEMERAL_CONFIG_DIR", Path.home() / ".config" / "rephemeral")
 )
 CONFIG_PATH = CONFIG_DIR / "rephemeral.toml"
 KEY_PATH = CONFIG_DIR / "id_ed25519"
-
-DEFAULT_HOST = "10.11.99.1"
-DEFAULT_USER = "root"
 
 
 @dataclass
@@ -45,10 +46,10 @@ class Config:
             "# rePhemeral configuration.\n"
             "# The device password is deliberately absent: it is used once to\n"
             "# install the key below, then discarded. Never add it here.\n"
-            f'host = "{self.host}"\n'
-            f'username = "{self.username}"\n'
+            f"host = {json.dumps(self.host, ensure_ascii=False)}\n"
+            f"username = {json.dumps(self.username, ensure_ascii=False)}\n"
             f"port = {self.port}\n"
-            f'key_path = "{self.key}"\n'
+            f"key_path = {json.dumps(str(self.key), ensure_ascii=False)}\n"
         )
         target.chmod(0o600)
         return target
@@ -77,13 +78,12 @@ def ensure_key(key_path: Path | None = None) -> Path:
     # keypair is produced with cryptography (already a paramiko dependency)
     # and written in OpenSSH format for both paramiko and ssh(1) to read.
     private = ed25519.Ed25519PrivateKey.generate()
-    target.write_bytes(
-        private.private_bytes(
+    with open(target, "xb", opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
+        stream.write(private.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.OpenSSH,
             encryption_algorithm=serialization.NoEncryption(),
-        )
-    )
+        ))
     target.chmod(0o600)
     pub_line = private.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH,
@@ -119,26 +119,14 @@ def install_key(
     target = ensure_key(key_path)
     line = public_key_line(target)
 
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        client.connect(
-            hostname=host, port=port, username=username, password=password,
-            timeout=10, allow_agent=False, look_for_keys=False,
-        )
+    with Device(host=host, username=username, port=port, password=password) as device:
         # Append only if absent, so re-running is harmless.
-        cmd = (
+        device.check(
             "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
-            f"grep -qxF {_q(line)} ~/.ssh/authorized_keys 2>/dev/null || "
-            f"echo {_q(line)} >> ~/.ssh/authorized_keys; "
+            f"(grep -qxF {_q(line)} ~/.ssh/authorized_keys 2>/dev/null || "
+            f"echo {_q(line)} >> ~/.ssh/authorized_keys) && "
             "chmod 600 ~/.ssh/authorized_keys"
         )
-        _in, out, err = client.exec_command(cmd, timeout=10)
-        rc = out.channel.recv_exit_status()
-        if rc != 0:
-            raise RuntimeError(err.read().decode("utf-8", "replace").strip())
-    finally:
-        client.close()
 
 
 def remove_key(device, key_line: str | None = None) -> None:
@@ -147,11 +135,8 @@ def remove_key(device, key_line: str | None = None) -> None:
     # Match on the key body, since the trailing comment may differ.
     body = line.split()[1] if len(line.split()) > 1 else line
     device.check(
-        f"test -f ~/.ssh/authorized_keys && "
-        f"grep -v {_q(body)} ~/.ssh/authorized_keys > ~/.ssh/.ak.tmp && "
-        f"mv ~/.ssh/.ak.tmp ~/.ssh/authorized_keys || true"
+        "if test -f ~/.ssh/authorized_keys; then "
+        "umask 077; "
+        f"awk -v key={_q(body)} '$2 != key' ~/.ssh/authorized_keys > ~/.ssh/.ak.tmp && "
+        "chmod 600 ~/.ssh/.ak.tmp && mv ~/.ssh/.ak.tmp ~/.ssh/authorized_keys; fi"
     )
-
-
-def _q(s: str) -> str:
-    return "'" + s.replace("'", "'\\''") + "'"

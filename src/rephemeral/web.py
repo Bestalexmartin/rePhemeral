@@ -1,18 +1,20 @@
 """Local web UI for rePhemeral.
 
 Binds to localhost by default. It is a control surface for a device on the
-end of a USB cable, not a service: there is no authentication, because
-anything that can reach it already has a shell on the machine that has the
-tablet plugged into it. Do not bind it to a public interface.
+end of a USB cable, not a service. Browser origins and Host headers are
+restricted to protect it from other websites; local processes still have
+access without authentication. Do not bind it to a public interface.
 """
 from __future__ import annotations
 
 import base64
 import socket
+import threading
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from paramiko import SSHException
 
 from . import config, screens
 from .apply import Applier
@@ -23,6 +25,65 @@ from .images import ImageError, thumbnail
 STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="rePhemeral", docs_url=None, redoc_url=None)
+
+#: The UI binds to loopback, so any other Host header is a misconfiguration
+#: or an attempt at DNS rebinding. An IPv6 literal appears bracketed here
+#: because RFC 7230 requires brackets in a Host header; a bare "::1" would
+#: be malformed, and listing it would be an entry nothing can match.
+ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
+
+_device_lock = threading.Lock()
+MAX_UPLOAD_BYTES = 32 * 1024 * 1024
+
+
+def _serial_device():
+    # Different requests must not remount read-only during another request's write.
+    with _device_lock:
+        yield
+
+
+def _host_only(value: str) -> str:
+    """The host part of a Host header, with any port removed.
+
+    Splitting on the first colon is right for `localhost:8765` and wrong
+    for an IPv6 literal: `[::1]:8765` would become `[`. Bracketed literals
+    have to be read to their closing bracket instead. Starlette's
+    TrustedHostMiddleware splits, which is why this check is done here
+    rather than delegated to it.
+    """
+    value = value.strip()
+    if value.startswith("["):
+        end = value.find("]")
+        if end == -1:
+            return value
+        rest = value[end + 1:]
+        # Only a port may follow the closing bracket. Without this,
+        # "[::1].evil.example" would read as "[::1]" and be allowed.
+        if rest and not rest.startswith(":"):
+            return value
+        return value[: end + 1]
+    return value.split(":", 1)[0]
+
+
+@app.middleware("http")
+async def local_requests(request: Request, call_next):
+    if _host_only(request.headers.get("host", "")) not in ALLOWED_HOSTS:
+        return JSONResponse({"detail": "Invalid host header."}, status_code=400)
+    origin = request.headers.get("origin")
+    if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
+        return JSONResponse({"detail": "Cross-origin requests are not allowed."}, status_code=403)
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        return JSONResponse({"detail": "Cross-site requests are not allowed."}, status_code=403)
+    return await call_next(request)
+
+
+async def operation_error(request: Request, exc: Exception):
+    code = 400 if isinstance(exc, (ImageError, BackupError)) else 503
+    return JSONResponse({"detail": str(exc) or "Tablet connection failed."}, status_code=code)
+
+
+for error_type in (DeviceError, SSHException, OSError, ImageError, BackupError):
+    app.add_exception_handler(error_type, operation_error)
 
 
 def _device() -> Device:
@@ -86,7 +147,7 @@ def ping() -> JSONResponse:
         sock.close()
 
 
-@app.get("/api/status")
+@app.get("/api/status", dependencies=[Depends(_serial_device)])
 def status() -> JSONResponse:
     try:
         d = _device()
@@ -122,7 +183,7 @@ def status() -> JSONResponse:
         d.close()
 
 
-@app.get("/api/screen/{key}/current")
+@app.get("/api/screen/{key}/current", dependencies=[Depends(_serial_device)])
 def current(key: str) -> JSONResponse:
     """Thumbnail of what is on the device right now."""
     screen = _screen(key)
@@ -135,15 +196,17 @@ def current(key: str) -> JSONResponse:
         d.close()
 
 
-@app.post("/api/screen/{key}/apply")
-async def apply_screen(
+@app.post("/api/screen/{key}/apply", dependencies=[Depends(_serial_device)])
+def apply_screen(
     key: str,
     file: UploadFile = File(...),
     fit: str = Form("cover"),
     grayscale: bool = Form(False),
 ) -> JSONResponse:
     screen = _screen(key)
-    raw = await file.read()
+    raw = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image uploads are limited to 32 MB.")
     d = _device()
     try:
         info = d.info()
@@ -167,7 +230,7 @@ async def apply_screen(
         d.close()
 
 
-@app.post("/api/screen/{key}/restore")
+@app.post("/api/screen/{key}/restore", dependencies=[Depends(_serial_device)])
 def restore(key: str) -> JSONResponse:
     screen = _screen(key)
     d = _device()
@@ -182,7 +245,7 @@ def restore(key: str) -> JSONResponse:
         d.close()
 
 
-@app.post("/api/restore-all")
+@app.post("/api/restore-all", dependencies=[Depends(_serial_device)])
 def restore_all() -> JSONResponse:
     d = _device()
     try:
@@ -193,7 +256,7 @@ def restore_all() -> JSONResponse:
         d.close()
 
 
-@app.post("/api/backup")
+@app.post("/api/backup", dependencies=[Depends(_serial_device)])
 def backup() -> JSONResponse:
     d = _device()
     try:
@@ -204,13 +267,11 @@ def backup() -> JSONResponse:
         d.close()
 
 
-@app.post("/api/restart-ui")
+@app.post("/api/restart-ui", dependencies=[Depends(_serial_device)])
 def restart_ui() -> JSONResponse:
     d = _device()
     try:
-        info = d.info()
-        store = BackupStore(d, build=info.build, board=info.board)
-        Applier(d, store).restart_ui()
+        d.check("systemctl restart xochitl")
         return JSONResponse({"ok": True})
     finally:
         d.close()

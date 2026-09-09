@@ -9,6 +9,7 @@ backup exists.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from .backup import BackupStore
@@ -57,14 +58,15 @@ class Applier:
             self.store.capture(screen)
             self.store.save()
 
+        # Verify an existing record still has recoverable stock before overwriting.
+        self.store.stock_bytes(screen)
+        # Persist intent before the write, so a disconnect cannot lose its hash.
+        self.store.note_applied(screen, hashlib.sha256(prepared.data).hexdigest(), source)
+        self.store.save()
+
         # 3. Write, inside the remount guard.
         with self.device.writable_rootfs():
             sha = self.device.write_bytes(screen.path, prepared.data)
-
-        # 4. Record what we wrote, so a later capture cannot mistake it
-        #    for stock art.
-        self.store.note_applied(screen, sha, source)
-        self.store.save()
 
         return ApplyResult(
             screen=screen,

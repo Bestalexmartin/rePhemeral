@@ -37,7 +37,7 @@ You will need it exactly once.
 - Backs up the stock artwork first, automatically, before the first write
   to each screen.
 - Converts your image to the panel's geometry, with a choice of crop,
-  letterbox or stretch, and shows you the result before it is written.
+  letterbox or stretch, and reports the conversion after it is written.
 - Restores stock artwork on demand, per screen or all at once.
 - Reports which screens are stock, which are yours, and which have been
   changed by something else, such as a firmware update.
@@ -57,7 +57,7 @@ disagree, rather than guessing.
 ## Install
 
 ```bash
-git clone https://github.com/YOURNAME/rePhemeral.git
+git clone https://github.com/Bestalexmartin/rePhemeral.git
 cd rePhemeral
 python3 -m venv .venv && ./.venv/bin/pip install -e .
 ```
@@ -193,9 +193,8 @@ is used once, in memory, to install that key, and is never persisted.
 This tool does not touch your reMarkable account. It has no cloud
 credentials and makes no network requests beyond the USB link.
 
-The web UI binds to `127.0.0.1` and has no authentication, because anything
-that can reach it already has a shell on the machine holding the cable. Do
-not bind it to a public interface.
+The web UI binds to `127.0.0.1` and has no authentication, and rejects cross-origin browser requests and unexpected Host headers.
+Local programs still have access to it. Do not bind it to a public interface.
 
 To remove the tool's access, delete its key from
 `/home/root/.ssh/authorized_keys` on the tablet.
@@ -273,6 +272,16 @@ Run `./scripts/setup-hooks.sh` after cloning. It installs a fail-closed
 gitleaks pre-commit hook, since this repository is public and the two
 things that must never land in it are the device password and an SSH
 private key.
+
+Install the development dependencies and run the checks with:
+
+```bash
+./.venv/bin/pip install -e '.[dev]'
+./.venv/bin/ruff check .
+./.venv/bin/python -m pytest
+```
+
+The tests use simulated devices and do not write to a connected tablet.
 
 Please do not commit artwork captured from a device.
 

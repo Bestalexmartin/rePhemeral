@@ -8,8 +8,9 @@ from pathlib import Path
 
 from . import config, inspector, screens
 from .apply import Applier
-from .backup import BackupStore
+from .backup import BackupError, BackupStore
 from .device import Device, DeviceError
+from .images import FIT_MODES, ImageError
 
 
 def _connect(cfg: config.Config) -> Device:
@@ -78,11 +79,12 @@ def cmd_backup(args: argparse.Namespace) -> int:
     with _connect(cfg) as d:
         store, info = _store(d)
         print(f"Capturing stock screens for build {info.build}")
-        for key, status in store.capture_all(screens.SCREENS).items():
+        results = store.capture_all(screens.SCREENS)
+        for key, status in results.items():
             print(f"  {key:<16} {status}")
         print(f"\nHost copy:   {store.host_dir}")
         print(f"Device copy: {store.device_dir}")
-    return 0
+    return int(any(value.startswith("FAILED:") for value in results.values()))
 
 
 def cmd_set(args: argparse.Namespace) -> int:
@@ -124,7 +126,8 @@ def cmd_restore(args: argparse.Namespace) -> int:
         store, _ = _store(d)
         applier = Applier(d, store)
         if args.all:
-            for key, status in applier.restore_all(screens.SCREENS).items():
+            results = applier.restore_all(screens.SCREENS)
+            for key, status in results.items():
                 print(f"  {key:<16} {status}")
         else:
             if not args.screen:
@@ -136,7 +139,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
         if args.restart:
             applier.restart_ui()
             print("Restarted xochitl.")
-    return 0
+    return int(args.all and any(value.startswith("FAILED:") for value in results.values()))
 
 
 def cmd_screens(args: argparse.Namespace) -> int:
@@ -172,7 +175,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     try:
         import uvicorn
     except ImportError:
-        print("The web UI needs uvicorn: pip install 'rephemeral[ui]'", file=sys.stderr)
+        print("The web UI needs uvicorn: pip install rephemeral", file=sys.stderr)
         return 1
     from .web import app
     print(f"rePhemeral UI on http://{args.bind}:{args.port}")
@@ -203,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("set", help="replace one screen with an image")
     s.add_argument("screen")
     s.add_argument("image")
-    s.add_argument("--fit", default="cover", choices=("cover", "contain", "stretch"))
+    s.add_argument("--fit", default="cover", choices=FIT_MODES)
     s.add_argument("--grayscale", action="store_true")
     s.add_argument("--restart", action="store_true",
                help="restart the tablet UI after (not needed for screen changes)")
@@ -230,6 +233,9 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except DeviceError as exc:
         print(f"Device error: {exc}", file=sys.stderr)
+        return 2
+    except (BackupError, ImageError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
         return 2
     except KeyError as exc:
         print(exc.args[0] if exc.args else str(exc), file=sys.stderr)

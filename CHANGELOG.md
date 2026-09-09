@@ -8,6 +8,91 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-09
+
+A review pass, independently verified here against a live tablet. Two of
+the defects it found were long-standing and mine.
+
+### Added
+
+- A test suite: 29 tests covering backup integrity, transfer safeguards,
+  SSH cleanup, image conversion, config handling and web requests. They
+  use simulated devices and never write to a connected tablet.
+- A 32 MB cap on uploads, so an oversized file cannot be read into memory
+  whole before anything checks it.
+
+### Security
+
+- The web UI now rejects cross-origin requests and unexpected Host
+  headers. The old reasoning, that anything able to reach localhost
+  already has a shell on the machine, overlooked the browser: a page you
+  visit could issue requests to `127.0.0.1:8765` and the browser would
+  send them. Covers `127.0.0.1` and `localhost`; local processes still
+  have unauthenticated access, as before.
+- `write_home_bytes` normalizes its path before checking the `/home/`
+  prefix. Without that, `/home/../usr/share/remarkable/...` satisfied the
+  check and escaped the partition the guard exists to confine writes to.
+- New private keys are created with mode 600 rather than written and then
+  chmodded, closing the window where the key existed readable.
+- Backup manifests are validated on load: schema, firmware build, screen
+  key format, hash format, and that each record's filename matches its
+  key. A tampered manifest could otherwise direct reads and writes
+  elsewhere. The firmware build string is validated too, since it forms
+  part of both host and device backup paths.
+- `remove_key` matches the key body as a field rather than by substring,
+  and writes its temporary file with restricted permissions.
+- The Host header check parses IPv6 literals. Starlette's
+  TrustedHostMiddleware strips a port by splitting on the first colon,
+  which turns `[::1]:8765` into `[` and matches nothing, so browsing to
+  `http://[::1]:8765` returned 400 while the allowed-host list implied it
+  was supported. The check reads bracketed literals to their closing
+  bracket and rejects anything trailing it, so `[::1].evil.example` does
+  not read as `[::1]`.
+
+### Changed
+
+- Backup manifests load from the tablet first and fall back to the host,
+  rather than the reverse. The tablet is the shared copy, so another
+  computer's updates are no longer masked by a stale local one.
+- Applying verifies that recoverable stock exists before overwriting a
+  screen, and records the replacement's hash before the write rather than
+  after, so an interrupted write cannot leave the tool unable to
+  recognize its own output.
+- `capture_all` saves after each screen instead of once at the end, so an
+  interruption keeps the captures already made.
+- Grayscale output is now a single-channel PNG rather than gray values in
+  three channels. Smaller, and the stock `remotewipe.png` is single
+  channel too, so the device handles it.
+- Web requests are serialized against the tablet and run off the event
+  loop. Concurrent requests could previously interleave, and one
+  finishing could remount the rootfs read-only while another was still
+  writing to it.
+- Batch CLI operations exit nonzero when any screen fails, instead of
+  always reporting success.
+
+### Fixed
+
+- The inspector's USB subnet check compared only the first two octets:
+  `"10.11.99".rsplit(".", 1)[0]` is `"10.11"`. It now compares properly
+  as a network.
+- Read-only remount verification parses `/proc/mounts` instead of
+  grepping `mount` output, and a failed revert no longer clears the
+  writable-depth counter, so cleanup retries it.
+- The free-space check credited the existing file's size against the
+  write. The temporary upload and the old file coexist until the rename,
+  so the check could pass when the space was not there.
+- SSH connections set explicit banner, auth and channel timeouts, close
+  partially-opened sessions on failure, and close each command's channel
+  rather than leaking one per command.
+- Config values are escaped when written, so a path containing a quote or
+  backslash no longer produces a broken file.
+- Transparency is composited for non-palette images too, not only
+  palette ones.
+- 14px between the file chooser button and the filename beside it.
+- README corrections: it still claimed the preview step showed the result
+  before writing, which 0.3.0 removed; the clone URL was a placeholder;
+  and it referenced a `[ui]` install extra that does not exist.
+
 ## [0.4.0] - 2026-09-09
 
 ### Added
@@ -175,7 +260,8 @@ First working version.
   effect immediately: `xochitl` reads these PNGs when it needs to draw
   them rather than caching them at startup. No restart step is needed.
 
-[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.2.0...v0.3.0

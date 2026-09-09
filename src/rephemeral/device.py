@@ -21,6 +21,8 @@ import posixpath
 import stat as statmod
 from collections.abc import Iterator
 from dataclasses import dataclass
+from shlex import quote as _q
+from uuid import uuid4
 
 import paramiko
 
@@ -99,7 +101,9 @@ class Device:
     # -- lifecycle ----------------------------------------------------
 
     def connect(self) -> None:
+        self.close()
         client = paramiko.SSHClient()
+        self._client = client
         # The tablet regenerates its host key on a factory reset, and
         # developer mode forces one. Rejecting the new key would block the
         # tool on exactly the workflow it exists to support, so we accept
@@ -114,16 +118,31 @@ class Device:
                 key_filename=self.key_path,
                 password=self._password,
                 timeout=self.timeout,
+                banner_timeout=self.timeout,
+                auth_timeout=self.timeout,
+                channel_timeout=self.timeout,
                 allow_agent=False,
                 look_for_keys=False,
             )
+            self._sftp = client.open_sftp()
+            self._sftp.get_channel().settimeout(self.timeout)
+            self._assert_is_remarkable()
+        except DeviceError:
+            self.close()
+            raise
         except Exception as exc:
+            self.close()
             raise DeviceError(f"could not connect to {self.host}: {exc}") from exc
-        self._client = client
-        self._sftp = client.open_sftp()
-        self._assert_is_remarkable()
+        finally:
+            self._password = None
 
     def close(self) -> None:
+        # If an exception escapes mid-write the rootfs could still be rw.
+        # Make a best-effort revert before dropping the connection.
+        if self._rw_depth > 0:
+            self._rw_depth = 0
+            with contextlib.suppress(Exception):
+                self.run("sync; mount -o remount,ro /")
         with contextlib.suppress(Exception):
             if self._sftp is not None:
                 self._sftp.close()
@@ -138,12 +157,6 @@ class Device:
         return self
 
     def __exit__(self, *exc: object) -> None:
-        # If an exception escapes mid-write the rootfs could still be rw.
-        # Make a best-effort revert before dropping the connection.
-        if self._rw_depth > 0:
-            self._rw_depth = 0
-            with contextlib.suppress(Exception):
-                self.run("sync; mount -o remount,ro /")
         self.close()
 
     # -- primitives ---------------------------------------------------
@@ -152,10 +165,18 @@ class Device:
         """Run a shell command. Returns (exit_status, stdout, stderr)."""
         if self._client is None:
             raise DeviceError("not connected")
-        _in, out, err = self._client.exec_command(command, timeout=self.timeout)
-        stdout = out.read().decode("utf-8", "replace")
-        stderr = err.read().decode("utf-8", "replace")
-        return out.channel.recv_exit_status(), stdout, stderr
+        channel = None
+        try:
+            _in, out, err = self._client.exec_command(command, timeout=self.timeout)
+            channel = out.channel
+            stdout = out.read().decode("utf-8", "replace")
+            stderr = err.read().decode("utf-8", "replace")
+            return channel.recv_exit_status(), stdout, stderr
+        except (OSError, paramiko.SSHException) as exc:
+            raise DeviceError(f"connection to {self.host} failed: {exc}") from exc
+        finally:
+            if channel is not None:
+                channel.close()
 
     def check(self, command: str) -> str:
         """Run a command, raising on non-zero exit. Returns stripped stdout."""
@@ -264,11 +285,9 @@ class Device:
                 f"if that is what you meant."
             )
 
-        existing = 0
-        if self.exists(path):
-            existing = self._sftp.stat(path).st_size or 0
         free, _total = self._rootfs_space()
-        projected = free + existing - len(data)
+        # The old file remains allocated until the temporary upload is renamed.
+        projected = free - len(data)
         if projected < MIN_FREE_BYTES:
             raise InsufficientSpaceError(
                 f"writing {len(data) // 1024} KB would leave "
@@ -277,7 +296,7 @@ class Device:
                 f"tablet boots from; filling it is not recoverable over SSH."
             )
 
-        tmp = posixpath.join(posixpath.dirname(path), f".rephemeral.{posixpath.basename(path)}.tmp")
+        tmp = posixpath.join(posixpath.dirname(path), f".rephemeral.{uuid4().hex}.tmp")
         try:
             self._sftp.putfo(io.BytesIO(data), tmp, confirm=True)
             self._sftp.chmod(tmp, mode)
@@ -309,11 +328,12 @@ class Device:
         """
         if self._sftp is None:
             raise DeviceError("not connected")
+        path = posixpath.normpath(path)
         if not path.startswith("/home/"):
             raise DeviceError(
                 f"write_home_bytes refuses {path!r}: only paths under /home"
             )
-        tmp = f"{path}.tmp"
+        tmp = f"{path}.{uuid4().hex}.tmp"
         try:
             self._sftp.putfo(io.BytesIO(data), tmp, confirm=True)
             self._sftp.chmod(tmp, mode)
@@ -361,7 +381,6 @@ class Device:
         try:
             yield
         finally:
-            self._rw_depth = 0
             rc, _, err = self.run("sync; mount -o remount,ro /")
             if rc != 0:
                 raise DeviceError(
@@ -370,14 +389,11 @@ class Device:
                     f"disconnecting: `ssh root@{self.host} reboot`. "
                     f"Cause: {err.strip()}"
                 )
-            leftover = self.run("mount | grep ' / ' | grep -c '(rw'")[1].strip()
-            if leftover not in ("0", ""):
+            options = self.check("awk '$2 == \"/\" {print $4}' /proc/mounts")
+            if "ro" not in options.split(",") or "rw" in options.split(","):
                 raise DeviceError(
                     "/ still reports read-write after remount; reboot the "
                     "tablet before disconnecting."
                 )
 
-
-def _q(path: str) -> str:
-    """Single-quote a path for the device's shell."""
-    return "'" + path.replace("'", "'\\''") + "'"
+            self._rw_depth = 0

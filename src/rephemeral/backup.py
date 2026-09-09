@@ -26,9 +26,11 @@ from __future__ import annotations
 import hashlib
 import json
 import posixpath
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from shlex import quote
 
 from .device import Device
 from .screens import Screen
@@ -132,6 +134,8 @@ class BackupStore:
 
     def __init__(self, device: Device, build: str, board: str = "",
                  host_root: Path | None = None) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", build):
+            raise BackupError(f"invalid firmware build: {build!r}")
         self.device = device
         self.build = build
         self.board = board
@@ -145,59 +149,67 @@ class BackupStore:
     def _host_manifest(self) -> Path:
         return self.host_dir / MANIFEST_NAME
 
+    def _parse_manifest(self, raw: str | bytes) -> Manifest:
+        try:
+            data = json.loads(raw)
+            if data.get("schema") != SCHEMA_VERSION or data.get("build") != self.build:
+                raise ValueError("unsupported schema or firmware build mismatch")
+            manifest = Manifest.from_json(data)
+            for key, rec in manifest.screens.items():
+                if rec.backup_file is not None and rec.backup_file != f"{key}.png":
+                    raise ValueError("unexpected backup filename")
+                if not re.fullmatch(r"[A-Za-z0-9_]+", key):
+                    raise ValueError("invalid screen key")
+                if rec.stock_sha256 is not None and (
+                    not re.fullmatch(r"[a-f0-9]{64}", rec.stock_sha256) or not rec.backup_file
+                ):
+                    raise ValueError("invalid stock record")
+            return manifest
+        except (ValueError, TypeError, AttributeError, UnicodeDecodeError) as exc:
+            raise BackupError(f"invalid backup manifest: {exc}") from exc
+
+    def _save_host_manifest(self, manifest: Manifest) -> None:
+        self.host_dir.mkdir(parents=True, exist_ok=True)
+        temporary = self._host_manifest.with_suffix(".json.tmp")
+        payload = json.dumps(manifest.to_json(), indent=2) + "\n"
+        if self._host_manifest.is_file() and self._host_manifest.read_text() == payload:
+            return
+        temporary.write_text(payload)
+        temporary.replace(self._host_manifest)
+
     def _load(self) -> Manifest:
-        """Load the manifest, host first, then the device.
-
-        The device copy is the fallback that makes a fresh machine work:
-        plug the tablet into a computer that has never seen it and the
-        backups are still there, because they live on the tablet's /home.
-        Without this the tool would report a fully backed-up device as
-        having no backups, and the first write would capture nothing.
-        """
-        if self._host_manifest.is_file():
-            try:
-                return Manifest.from_json(json.loads(self._host_manifest.read_text()))
-            except (json.JSONDecodeError, OSError) as exc:
-                raise BackupError(
-                    f"backup manifest at {self._host_manifest} is unreadable: {exc}. "
-                    f"Move it aside rather than deleting it; it is the index of "
-                    f"your only copy of the stock art."
-                ) from exc
-
+        """Prefer the tablet's manifest: another computer may have updated it."""
         device_manifest = posixpath.join(self.device_dir, MANIFEST_NAME)
         if self.device.exists(device_manifest):
-            try:
-                raw = self.device.read_bytes(device_manifest)
-                manifest = Manifest.from_json(json.loads(raw.decode()))
-            except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
-                raise BackupError(
-                    f"the device's backup manifest at {device_manifest} is "
-                    f"unreadable: {exc}"
-                ) from exc
-            # Mirror it back so the host copy exists for next time, and so
-            # the fallback survives the tablet being wiped.
+            manifest = self._parse_manifest(self.device.read_bytes(device_manifest))
             self.host_dir.mkdir(parents=True, exist_ok=True)
-            self._host_manifest.write_text(json.dumps(manifest.to_json(), indent=2) + "\n")
             for rec in manifest.screens.values():
                 if not rec.backup_file:
                     continue
                 local = self.host_dir / rec.backup_file
-                if local.is_file():
+                if local.is_file() and hashlib.sha256(local.read_bytes()).hexdigest() == (
+                    rec.stock_sha256
+                ):
                     continue
                 remote = posixpath.join(self.device_dir, rec.backup_file)
                 if self.device.exists(remote):
-                    local.write_bytes(self.device.read_bytes(remote))
+                    data = self.device.read_bytes(remote)
+                    if hashlib.sha256(data).hexdigest() != rec.stock_sha256:
+                        raise BackupError(f"corrupt device backup: {rec.backup_file}")
+                    local.write_bytes(data)
+            self._save_host_manifest(manifest)
             return manifest
-
+        if self._host_manifest.is_file():
+            return self._parse_manifest(self._host_manifest.read_text())
         return Manifest(build=self.build, board=self.board)
 
     def save(self) -> None:
         """Persist the manifest to host, then mirror it to the device."""
         self.host_dir.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(self.manifest.to_json(), indent=2) + "\n"
-        self._host_manifest.write_text(payload)
+        self._save_host_manifest(self.manifest)
         # /home is already read-write, so no remount is needed here.
-        self.device.check(f"mkdir -p '{self.device_dir}'")
+        self.device.check(f"mkdir -p {quote(self.device_dir)}")
         self.device.write_home_bytes(
             posixpath.join(self.device_dir, MANIFEST_NAME), payload.encode()
         )
@@ -241,7 +253,7 @@ class BackupStore:
         self.host_dir.mkdir(parents=True, exist_ok=True)
         (self.host_dir / filename).write_bytes(data)
 
-        self.device.check(f"mkdir -p '{self.device_dir}'")
+        self.device.check(f"mkdir -p {quote(self.device_dir)}")
         self.device.write_home_bytes(
             posixpath.join(self.device_dir, filename), data
         )
@@ -260,6 +272,7 @@ class BackupStore:
                 continue
             try:
                 self.capture(s)
+                self.save()
                 results[s.key] = "captured"
             except BackupError as exc:
                 results[s.key] = f"FAILED: {exc}"

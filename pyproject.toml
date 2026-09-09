@@ -1,6 +1,6 @@
 [project]
 name = "rephemeral"
-version = "0.4.0"
+version = "0.5.0"
 description = "Replace the sleep and restart screens on a reMarkable Paper Pro over USB."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.4"]
+dev = ["pytest>=8.0", "ruff>=0.4", "httpx>=0.27"]
 
 [project.scripts]
 rephemeral = "rephemeral.cli:main"
