@@ -1,0 +1,43 @@
+[project]
+name = "rephemeral"
+version = "0.1.0"
+description = "Replace the sleep and restart screens on a reMarkable Paper Pro over USB."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "paramiko>=3.4",
+    "pillow>=10.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+rephemeral = "rephemeral.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rephemeral = ["static/*.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency injection is expressed as call-valued argument
+# defaults. B008 flags that pattern generally, but here it is the
+# framework's documented idiom rather than a mutable-default bug.
+"src/rephemeral/web.py" = ["B008"]

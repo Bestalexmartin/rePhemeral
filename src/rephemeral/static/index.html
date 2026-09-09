@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rePhemeral</title>
+<!-- Mission Board type. Falls back to system faces when the tool runs
+     offline, which it often will: the tablet is on a USB cable and the
+     machine may have no network at all. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mission Board tokens ─────────────────────────────────────────────
+   Ported verbatim from Tanzaku's design_handoff_mission_board_reskin.
+   Dark only: the wall does not invert. Depth is background steps, never
+   shadows. Signals carry all colour; GO green is the only action colour. */
+:root {
+  --wall: #0C0E11;
+  --wall-raised: #101317;
+  --panel: #14171B;
+  --tile: #1A1F25;
+  --seam: #272D35;
+  --seam-bright: #3A424D;
+
+  --text: #EDEFF2;
+  --text-dim: #8B93A0;
+  --text-faint: #5A626E;
+
+  --go: #3ECF7A;
+  --go-hover: #5BDB90;
+  --go-ink: #06210F;
+  --nogo: #E5484D;
+  --nogo-ink: #FFFFFF;
+  --hold: #F5A623;
+
+  --coverage-cyan: #58C6D8;
+  --coverage-violet: #9089E6;
+
+  --font-display: 'Archivo', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --track-wordmark: 0.32em;
+  --track-label: 0.14em;
+  --track-pill: 0.18em;
+
+  --r-pill: 3px; --r-btn: 4px; --r-tile: 6px; --r-panel: 8px;
+  /* One value for both the page margin and the padding inside a card,
+     so the outer and inner gutters read as the same measure. */
+  --pad: 18px;
+  --gap-grid: 12px;
+  --ease-fast: 0.15s ease;
+}
+
+* { box-sizing: border-box; }
+/* The page itself does not scroll. Chrome, console and image controls
+   stay put; only the tile grid moves. */
+html, body { background: var(--wall); height: 100%; overflow: hidden; }
+body {
+  margin: 0; color: var(--text);
+  font-family: var(--font-display); font-size: 15px; line-height: 1.65;
+  display: flex; flex-direction: column;
+}
+.mono { font-family: var(--font-mono); }
+
+/* ── Chrome strip ─────────────────────────────────────────────────── */
+header {
+  background: var(--wall-raised);
+  border-bottom: 1px solid var(--seam);
+  padding: 0 var(--pad);
+  min-height: 64px;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  flex-wrap: wrap;
+}
+.wordmark {
+  font-family: var(--font-display); font-weight: 600; font-size: 15px;
+  text-transform: uppercase; letter-spacing: var(--track-wordmark);
+  white-space: nowrap;
+}
+.wordmark .sep { color: var(--coverage-cyan); }
+
+/* Device readouts, right-aligned per the label-over-value pattern. */
+.readouts { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap;
+  justify-content: flex-end; padding: 10px 0; }
+.readout {
+  background: var(--tile); border: 1px solid var(--seam); border-radius: var(--r-tile);
+  padding: 6px 14px; text-align: right; min-width: 96px;
+}
+.readout .lbl {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: var(--track-label);
+  color: var(--text-faint); display: block; line-height: 1.4;
+}
+.readout .val {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
+  color: var(--text); display: block; line-height: 1.4;
+}
+.readout .val.go { color: var(--go); }
+.readout .val.nogo { color: var(--nogo); }
+.readout .val.data { color: var(--coverage-cyan); }
+
+/* ── Board ────────────────────────────────────────────────────────── */
+main {
+  padding: var(--pad);
+  /* min-height:0 lets this shrink below its content so the grid inside can
+     scroll. Without it a flex child refuses to go under its content size
+     and the scroll never engages. */
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+header { flex: none; }
+/* Sections 01 and 02 keep their natural height. */
+main > .sec { flex: none; }
+/* Section 03 takes the remaining height and scrolls inside its body, so
+   its header band stays visible while the tiles move under it. */
+main > .sec:last-child {
+  flex: 1; min-height: 0; margin-bottom: 0;
+  display: flex; flex-direction: column;
+}
+main > .sec:last-child > .head { flex: none; }
+main > .sec:last-child > .body { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* On a short window there is no height left to give the grid, so fall back
+   to an ordinary scrolling document rather than crushing it to nothing. */
+@media (max-height: 720px) {
+  html, body { height: auto; overflow: visible; }
+  body { display: block; }
+  main { display: block; padding-bottom: 64px; }
+  main > .sec:last-child { display: block; }
+  main > .sec:last-child > .body { overflow: visible; }
+}
+
+/* Carded sections, following Tanzaku's panel pattern: a header band
+   carrying the cyan NN · LABEL, a seam beneath it, body below. Depth is
+   background steps, so the ladder runs wall -> header band -> panel body
+   -> tile. */
+.sec {
+  background: var(--panel); border: 1px solid var(--seam);
+  border-radius: var(--r-panel); margin-bottom: 14px; overflow: hidden;
+}
+.sec > .head {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 11px var(--pad); background: var(--wall-raised);
+  border-bottom: 1px solid var(--seam);
+}
+.sec > .head .idx {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: var(--track-pill); text-transform: uppercase;
+  color: var(--coverage-cyan); white-space: nowrap;
+}
+.sec > .head .meta {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: var(--track-label); text-transform: lowercase;
+  color: var(--text-faint); white-space: nowrap;
+}
+.sec > .body { padding: var(--pad); }
+
+/* Both control sections share one shape: controls left, explanatory text
+   right-aligned opposite them. Section 02 reads as a continuation of 01
+   rather than a different kind of thing. */
+.console {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 28px; flex-wrap: wrap;
+}
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.note {
+  margin: 0 0 0 auto; text-align: right;
+  /* text-dim rather than text-faint: faint is for chrome labels a glance
+     skips over, and this is prose meant to be read. */
+  color: var(--text-dim); font-size: 13px; line-height: 1.55;
+  text-wrap: pretty;
+}
+.note .warn { color: var(--hold); }
+/* Each sentence is its own block, so the line break lands on the sentence
+   boundary at every width rather than wherever the text happens to wrap. */
+.note span { display: block; }
+
+button {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: var(--track-label);
+  padding: 8px 16px; border-radius: var(--r-btn);
+  border: 1px solid var(--seam); background: transparent; color: var(--text-dim);
+  cursor: pointer; transition: color var(--ease-fast), border-color var(--ease-fast),
+    background var(--ease-fast);
+}
+button:hover:not(:disabled) { color: var(--text); border-color: var(--seam-bright); }
+button:disabled { opacity: .4; cursor: default; }
+button.go {
+  background: var(--go); border-color: var(--go); color: var(--go-ink);
+}
+button.go:hover:not(:disabled) {
+  background: var(--go-hover); border-color: var(--go-hover); color: var(--go-ink);
+}
+
+/* Full-bleed tiling, capped at six columns.
+
+   There are only eleven screens, so more than six across leaves a ragged
+   second row of stragglers. The cap comes from the minimum track size:
+   floor it at one sixth of the row (the row being the full width less the
+   five gaps between six columns), and auto-fill can never fit a seventh.
+   Below that the 172px floor takes over and the grid reflows to fewer
+   columns, so narrow windows still behave.
+
+   Six columns of eleven gives 6 + 5, which is the tidiest split available.
+
+   The 1px is not cosmetic. auto-fill fits floor((avail + gap) / (track +
+   gap)) columns, and a track of exactly one sixth makes that expression
+   land on exactly 6.0, where any downward floating-point rounding in the
+   browser silently drops it to five. Shaving the track by a pixel puts it
+   safely inside the boundary, and is nowhere near enough to let a seventh
+   column in. */
+.grid {
+  --cols-max: 6;
+  display: grid; gap: var(--gap-grid);
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(
+      max(
+        172px,
+        calc(
+          (100% - (var(--cols-max) - 1) * var(--gap-grid)) / var(--cols-max) - 1px
+        )
+      ),
+      1fr
+    )
+  );
+}
+
+.card {
+  background: var(--tile); border: 1px solid var(--seam);
+  border-radius: var(--r-panel); padding: 10px;
+  display: flex; flex-direction: column; gap: 9px; cursor: pointer;
+  transition: border-color var(--ease-fast);
+}
+/* Border-only signal states, matching Tanzaku's BoardCard (MB.28 ruling):
+   HOLD amber on hover, GO green when selected. The card face never
+   changes. The seam-brighten this replaced was too faint to read as a
+   hover at all. */
+.card:hover { border-color: var(--hold); }
+.card.sel { border-color: var(--go); }
+.card.sel:hover { border-color: var(--go); }
+
+.thumb {
+  aspect-ratio: 3 / 4; background: var(--wall);
+  border: 1px solid var(--seam); border-radius: var(--r-tile);
+  display: grid; place-items: center; overflow: hidden;
+}
+.thumb img { width: 100%; height: 100%; object-fit: contain; }
+.thumb .ph {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-faint);
+}
+
+.card .name {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: var(--track-label); color: var(--text);
+}
+.card .dims {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--track-label);
+  color: var(--text-faint);
+}
+
+/* ── Status pills, flight-ops vocabulary ──────────────────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: var(--track-pill); text-transform: uppercase;
+  padding: 3px 10px; border-radius: var(--r-pill);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pill.nominal { color: var(--text-dim); border-color: var(--seam-bright); }
+.pill.active  { color: var(--go); border-color: rgba(62,207,122,.4); }
+.pill.latched { color: var(--coverage-violet); border-color: rgba(144,137,230,.4); }
+.pill.hold    { color: var(--hold); border-color: rgba(245,166,35,.45); }
+.pill.nogo    { background: var(--nogo); color: var(--nogo-ink); border-color: var(--nogo); }
+.pill .dot { width: 5px; height: 5px; border-radius: 9999px; background: currentColor; }
+.flag {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--hold);
+}
+
+/* ── Detail panel ─────────────────────────────────────────────────── */
+select:disabled, input[type=file]:disabled { opacity: .35; cursor: default; }
+.field.off label { opacity: .35; }
+
+/* The three settings fill the column rather than sizing to their content.
+   Image is weighted wider because it carries a filename, which the
+   content-sized version truncated. min-width:0 lets a grid item shrink
+   below its content width instead of forcing the row wider. */
+.controls {
+  display: grid; grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 14px; align-items: end;
+}
+.controls .field { min-width: 0; }
+.controls select, .controls input[type=file] { width: 100%; }
+@media (max-width: 560px) { .controls { grid-template-columns: 1fr; } }
+.field label {
+  display: block; margin-bottom: 5px; line-height: 1.2;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: var(--track-label); color: var(--text-faint);
+}
+select, input[type=file] {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--tile); color: var(--text);
+  border: 1px solid var(--seam); border-radius: var(--r-btn); padding: 7px 9px;
+}
+select:hover, input[type=file]:hover { border-color: var(--seam-bright); }
+
+/* Section 02: controls stacked in the left half, the screen's description
+   filling the right. The description sits beside the controls rather than
+   under them, which keeps the section short.
+
+   It is reserved four lines tall, the longest case measured across all
+   eleven screens (remotewipe's description plus its diagnostic warning),
+   so switching screens never reflows the messages below. */
+.pane {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 24px; align-items: start;
+}
+@media (max-width: 1000px) { .pane { grid-template-columns: 1fr; } }
+/* Section 02's three buttons share one width, set by the widest label
+   ("Restore stock"). Equal 1fr tracks inside a max-content grid resolve
+   to a multiple of the widest item, so the width comes from the content
+   rather than a magic number that would drift if a label changed. */
+.pane .toolbar {
+  margin-top: 14px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  width: max-content; gap: 8px;
+}
+/* The equal buttons need roughly 310px; below that, let them wrap. */
+@media (max-width: 400px) {
+  .pane .toolbar { display: flex; flex-wrap: wrap; width: auto; }
+}
+/* Drop the text to the top of the file input rather than the label above
+   it: label line box (10px x 1.2 = 12px) plus its 5px margin. */
+.pane .note { margin: 0; padding-top: 17px; min-height: 81px; }
+@media (max-width: 1000px) { .pane .note { padding-top: 0; min-height: 0; } }
+
+
+.notes { margin: 0; padding-left: 16px; list-style: none; }
+.notes li {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim);
+  letter-spacing: .02em; margin-bottom: 3px;
+}
+.notes li::before { content: '· '; color: var(--coverage-cyan); }
+
+.msg {
+  padding: 9px 13px; border-radius: var(--r-btn);
+  border: 1px solid var(--seam); background: var(--tile);
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .02em;
+  color: var(--text-dim);
+}
+.msg.err { color: var(--nogo); border-color: rgba(229,72,77,.5); }
+
+/* The apply readout holds its place whether or not there is anything to
+   report, so a result never shifts the page. One row exactly: 11.5px at
+   1.55 line-height is 17.8px, plus 11px padding each side and the 1px
+   border, which is 42px. Fixed rather than a minimum, so a long result
+   scrolls inside the box instead of growing it.
+
+   At rest it is a dull cyan wash. Cyan is this system's data accent, and
+   a result readout is telemetry rather than an action, so it must not
+   borrow GO green until there is actually a success to report. */
+#msg {
+  margin-top: 18px; padding: 11px 14px; border-radius: var(--r-btn);
+  height: 42px; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .02em;
+  line-height: 1.55;
+  background: rgba(88, 198, 216, .05);
+  border: 1px solid rgba(88, 198, 216, .22);
+  color: var(--text-dim);
+  transition: background var(--ease-fast), border-color var(--ease-fast),
+              color var(--ease-fast);
+}
+#msg.ok {
+  background: rgba(62, 207, 122, .08);
+  border-color: rgba(62, 207, 122, .5); color: var(--go);
+}
+#msg.err {
+  background: rgba(229, 72, 77, .08);
+  border-color: rgba(229, 72, 77, .55); color: var(--nogo);
+}
+#msg.idle { text-transform: uppercase; letter-spacing: var(--track-label);
+            color: var(--text-faint); }
+
+.warnbox {
+  border: 1px solid rgba(245,166,35,.45); color: var(--hold);
+  border-radius: var(--r-btn); padding: 9px 13px; margin-bottom: 16px;
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .02em;
+}
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">RE<span class="sep">/</span>PHEMERAL</div>
+  <div class="readouts" id="readouts">
+    <div class="readout"><span class="lbl">Link</span><span class="val" id="ro-link">···</span></div>
+  </div>
+</header>
+
+<main>
+
+  <section class="sec">
+    <div class="head"><span class="idx">01 · Console</span></div>
+    <div class="body">
+    <div class="console">
+    <div class="toolbar">
+      <button id="btn-backup">Back up stock</button>
+      <button id="btn-restore-all">Restore all</button>
+      <button id="btn-restart">Restart UI</button>
+      <button id="btn-refresh">Refresh</button>
+    </div>
+    <p class="note">
+      <span>Screens are written to the tablet's read-only root filesystem, which is
+        remounted for the duration of each write and put back afterwards.</span>
+      <span>A firmware update replaces that filesystem, so custom screens revert
+        and need reapplying.</span>
+    </p>
+    </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="head"><span class="idx" id="sec2">02 · Image</span></div>
+    <div class="body">
+    <div class="pane">
+      <div>
+        <div class="controls">
+          <div class="field off"><label for="f">Image</label>
+            <input type="file" id="f" accept="image/*" disabled></div>
+          <div class="field off"><label for="fit">Fit</label>
+            <select id="fit" disabled>
+              <option value="cover">Cover · crop to fill</option>
+              <option value="contain">Contain · letterbox</option>
+              <option value="stretch">Stretch · distort</option>
+            </select></div>
+          <div class="field off"><label for="gs">Colour</label>
+            <select id="gs" disabled>
+              <option value="">Keep colour</option>
+              <option value="1">Greyscale</option>
+            </select></div>
+        </div>
+        <div class="toolbar">
+          <button id="btn-restore" disabled>Restore stock</button>
+          <button id="btn-apply" class="go" disabled>Apply</button>
+        </div>
+      </div>
+      <p class="note" id="sec2-note">
+        <span>Select a screen below to replace or restore it.</span>
+      </p>
+    </div>
+    <div id="msg" class="idle">Standing by</div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="head">
+      <span class="idx">03 · Screens</span>
+      <span class="meta" id="sec3-meta"></span>
+    </div>
+    <div class="body">
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* Keep at least three words on a block's last line.
+   Joining the final three with non-breaking spaces means a wrap can never
+   strand one or two words on their own. \s matches \u00A0 in JavaScript,
+   so re-running this over already-bound text is a no-op rather than a
+   corruption. If those three words are long enough that binding them
+   would overflow a narrow column, it falls back to two, then to leaving
+   the text alone: an orphan is untidy, an overflow is broken. */
+function noOrphans(text, keep = 3, maxLen = 34) {
+  const words = String(text).trim().split(/\s+/);
+  if (words.length <= keep) return words.join(' ');
+  let n = keep;
+  while (n > 1 && words.slice(-n).join(' ').length > maxLen) n--;
+  if (n < 2) return words.join(' ');
+  return words.slice(0, -n).join(' ') + ' ' + words.slice(-n).join('\u00A0');
+}
+
+/* Apply it to every prose block currently on the page. */
+function fixNotes() {
+  document.querySelectorAll('.note span').forEach(el => {
+    el.textContent = noOrphans(el.textContent);
+  });
+}
+let STATE = null, SELECTED = null;
+
+/* Thumbnails are the expensive part of a refresh: each one reads a whole
+   PNG off the tablet over SFTP. Cache them by key, so a redraw costs
+   nothing and only screens we know have changed are refetched. */
+const THUMBS = {};
+const forgetThumb = key => { delete THUMBS[key]; };
+const forgetAllThumbs = () => { for (const k of Object.keys(THUMBS)) delete THUMBS[k]; };
+
+/* Device state expressed in flight-ops vocabulary. */
+function pill(state) {
+  if (state === 'stock') return { cls: 'nominal', text: 'Nominal' };
+  if (state === 'custom (applied by rePhemeral)') return { cls: 'active', text: 'Active', dot: true };
+  if (state.startsWith('custom')) return { cls: 'latched', text: 'Latched' };
+  if (state === 'not backed up') return { cls: 'nogo', text: 'No Go' };
+  if (state === 'missing from device') return { cls: 'nogo', text: 'No Go' };
+  return { cls: 'hold', text: 'Hold' };
+}
+
+function readout(lbl, val, kind) {
+  return `<div class="readout"><span class="lbl">${lbl}</span>` +
+         `<span class="val ${kind || ''}">${val}</span></div>`;
+}
+
+async function load() {
+  let r;
+  try { r = await (await fetch('/api/status')).json(); }
+  catch (e) {
+    $('#readouts').innerHTML = readout('Link', 'Offline', 'nogo');
+    forgetAllThumbs();
+    panelEmpty();
+    return;
+  }
+  STATE = r;
+  if (!r.connected) {
+    $('#readouts').innerHTML = readout('Link', 'No Go', 'nogo');
+    forgetAllThumbs();
+    $('#grid').innerHTML =
+      `<div class="msg err" style="grid-column:1/-1">${r.detail || 'Tablet not connected.'}</div>`;
+    panelEmpty();
+    return;
+  }
+  $('#readouts').innerHTML =
+    readout('Link', 'Live', 'go') +
+    readout('Board', r.board, 'data') +
+    readout('Build', r.build) +
+    readout('Root Free', r.free_mb + ' MB', r.free_mb < 12 ? 'nogo' : '');
+  const backed = r.screens.filter(x => x.has_backup).length;
+  $('#sec3-meta').textContent =
+    `${r.screens.length} screens · ${backed} backed up`;
+  renderGrid();
+  if (!SELECTED || !r.screens.some(x => x.key === SELECTED)) panelEmpty();
+}
+
+function renderGrid() {
+  const g = $('#grid');
+  g.innerHTML = '';
+  for (const s of STATE.screens) {
+    const p = pill(s.state);
+    const el = document.createElement('div');
+    el.dataset.key = s.key;
+    el.className = 'card' + (SELECTED === s.key ? ' sel' : '');
+    el.innerHTML =
+      `<div class="thumb" data-thumb="${s.key}"><span class="ph">Loading</span></div>
+       <div class="name">${s.label}</div>
+       <div class="dims">${s.width} × ${s.height}${s.risky ? ' · <span class="flag">▲ Diag</span>' : ''}</div>
+       <div><span class="pill ${p.cls}">${p.dot ? '<span class="dot"></span>' : ''}${p.text}</span></div>`;
+    el.onclick = () => select(s.key);
+    g.appendChild(el);
+
+    const slot = g.querySelector(`[data-thumb="${s.key}"]`);
+    if (THUMBS[s.key]) { slot.innerHTML = `<img src="${THUMBS[s.key]}" alt="">`; continue; }
+    fetch(`/api/screen/${s.key}/current`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const t = g.querySelector(`[data-thumb="${s.key}"]`);
+        if (d && d.image) {
+          THUMBS[s.key] = d.image;
+          if (t) t.innerHTML = `<img src="${d.image}" alt="">`;
+        } else if (t) {
+          t.innerHTML = '<span class="ph">No Data</span>';
+        }
+      })
+      .catch(() => {});
+  }
+}
+
+/* Section 02's controls never move or disappear. They ghost out until a
+   screen is chosen, so the section keeps its shape and the eye does not
+   have to re-find the buttons after every selection. */
+function setControls(on, hasBackup) {
+  for (const id of ['f', 'fit', 'gs']) $('#' + id).disabled = !on;
+  $('#btn-restore').disabled = !(on && hasBackup);
+  syncApply();
+  document.querySelectorAll('.field').forEach(f => f.classList.toggle('off', !on));
+}
+
+/* Apply needs a screen and a file. Nothing else gates it now that the
+   preview step is gone. */
+function syncApply() {
+  $('#btn-apply').disabled = !(SELECTED && $('#f').files.length);
+}
+
+function panelEmpty() {
+  SELECTED = null;
+  $('#sec2').textContent = '02 · Image';
+  $('#sec2-note').innerHTML =
+    '<span>Select a screen below to replace or restore it.</span>';
+  setControls(false, false);
+  fixNotes();
+  msgIdle();
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('sel'));
+}
+
+function select(key) {
+  SELECTED = key;
+  const s = STATE.screens.find(x => x.key === key);
+
+  /* The screen's name replaces the section's generic label rather than
+     repeating as a heading inside it. */
+  $('#sec2').textContent = '02 · ' + s.label;
+
+  /* Its description sits where section 01's note sits, in the same
+     treatment, because it is the same kind of text. */
+  let note = `<span>${s.description}</span>`;
+  if (s.risky) {
+    note += '<span class="warn">▲ Diagnostic screen. Replacing it means a real ' +
+            'failure will look like an ordinary screen.</span>';
+  }
+  $('#sec2-note').innerHTML = note;
+
+  setControls(true, s.has_backup);
+  fixNotes();
+  msgIdle();
+
+  /* Toggle the selected card in place. Calling renderGrid() here rebuilt
+     every card and refetched all eleven thumbnails over SSH, so the whole
+     board visibly reloaded on every click. */
+  document.querySelectorAll('.card').forEach(
+    c => c.classList.toggle('sel', c.dataset.key === key));
+}
+
+function formData() {
+  const f = $('#f').files[0];
+  if (!f) { msg('Choose an image first.', 'err'); return null; }
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('fit', $('#fit').value);
+  if ($('#gs').value) fd.append('greyscale', 'true');
+  return fd;
+}
+
+/* The readout box is permanent; only its content and signal colour
+   change. `kind` is 'ok', 'err', or omitted for a working state. */
+function msg(text, kind) {
+  const el = $('#msg');
+  el.className = kind || '';
+  el.innerHTML = text;
+}
+
+function msgIdle() {
+  const el = $('#msg');
+  el.className = 'idle';
+  el.textContent = 'Standing by';
+}
+
+async function doApply() {
+  const fd = formData(); if (!fd) return;
+  $('#btn-apply').disabled = true;
+  msg('Writing to tablet');
+  const r = await fetch(`/api/screen/${SELECTED}/apply`, { method: 'POST', body: fd });
+  const d = await r.json();
+  if (!r.ok) { msg(d.detail || 'Apply failed.', 'err'); syncApply(); return; }
+  let out = `Written · ${d.size_kb} KB.` +
+            (d.backed_up_now ? ' Stock image captured to backup first.' : '') +
+            ' The tablet may need a restart before you see it.';
+  /* What the conversion actually did. With the preview step gone this is
+     the only place it is reported, so it matters more than it did. */
+  if (d.notes && d.notes.length) out += ' · ' + d.notes.join(' · ');
+  msg(out, 'ok');
+  forgetThumb(SELECTED);   // only this screen's image changed
+  load();
+}
+
+async function doRestore() {
+  msg('Restoring');
+  const r = await fetch(`/api/screen/${SELECTED}/restore`, { method: 'POST' });
+  const d = await r.json();
+  msg(r.ok ? 'Stock image restored.' : (d.detail || 'Restore failed.'), r.ok ? 'ok' : 'err');
+  if (r.ok) forgetThumb(SELECTED);
+  load();
+}
+
+fixNotes();
+$('#f').onchange = syncApply;
+$('#btn-apply').onclick = doApply;
+$('#btn-restore').onclick = doRestore;
+/* Refresh is the deliberate "re-read everything" action, so it is the one
+   place the whole cache is dropped. */
+$('#btn-refresh').onclick = () => { forgetAllThumbs(); load(); };
+$('#btn-backup').onclick = async () => {
+  /* Capturing stock art reads the screens; it never writes one, so every
+     cached thumbnail is still accurate. */
+  const r = await fetch('/api/backup', { method: 'POST' }); await r.json(); load();
+};
+$('#btn-restore-all').onclick = async () => {
+  const r = await fetch('/api/restore-all', { method: 'POST' }); await r.json();
+  forgetAllThumbs();     // this one can rewrite every screen
+  load();
+};
+$('#btn-restart').onclick = async () => {
+  await fetch('/api/restart-ui', { method: 'POST' });
+};
+load();
+</script>
+</body>
+</html>

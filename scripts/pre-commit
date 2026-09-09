@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# rePhemeral pre-commit secrets gate.
+#
+# This repo is public and handles two things that must never reach it: the
+# tablet's root password and the SSH private key the tool generates. The
+# gate scans the staged patch, so a secret is caught before it enters
+# history rather than after, when it is already compromised.
+#
+# Fail-closed: a missing gitleaks binary blocks the commit rather than
+# waving it through. Install with: brew install gitleaks
+#
+# Install this hook with ./scripts/setup-hooks.sh
+set -uo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "gitleaks gate: gitleaks is not installed; commit blocked (fail-closed)." >&2
+  echo "gitleaks gate: install with: brew install gitleaks" >&2
+  exit 1
+fi
+
+if ! gitleaks protect --staged --no-banner --redact --config .gitleaks.toml .; then
+  echo "" >&2
+  echo "gitleaks gate: secret detected in staged changes; commit blocked." >&2
+  echo "gitleaks gate: a deliberate test fixture belongs in .gitleaks.toml allowlist." >&2
+  echo "gitleaks gate: a real secret is compromised the moment it is committed." >&2
+  echo "gitleaks gate: rotate it FIRST (toggle developer mode to regenerate the" >&2
+  echo "gitleaks gate: device password; delete the key from the tablet's" >&2
+  echo "gitleaks gate: authorized_keys), then remove it from the staged patch." >&2
+  exit 1
+fi
+exit 0

@@ -1,0 +1,31 @@
+# rePhemeral secrets-scanning config.
+#
+# Extends the gitleaks default ruleset. Additions here are for the two
+# device-specific credentials this project handles, neither of which the
+# default rules would recognise on their own.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "remarkable-root-password"
+description = "reMarkable device root password (10-char alphanumeric from Settings)"
+# Matches an assignment of a bare 10-character alnum token to a
+# password-ish name. Deliberately narrow: the device password format is
+# fixed, so a wider rule would be all false positives.
+regex = '''(?i)(rm_?pass|root_?pass|device_?pass|ssh_?pass)\w*\s*[:=]\s*["']?([A-Za-z0-9]{10})["']?'''
+secretGroup = 2
+tags = ["remarkable", "password"]
+
+[[rules]]
+id = "openssh-private-key-body"
+description = "Inlined OpenSSH private key"
+regex = '''-----BEGIN (OPENSSH|RSA|EC|DSA) PRIVATE KEY-----'''
+tags = ["key", "ssh"]
+
+[allowlist]
+description = "Paths that legitimately contain credential-shaped strings"
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''rephemeral\.example\.toml$''',
+  '''README\.md$''',
+]

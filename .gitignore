@@ -1,0 +1,40 @@
+# --- Secrets and machine-local state -------------------------------
+# The tool generates an SSH keypair for the tablet. It must never be
+# committed; this repo is public.
+*.key
+*_key
+*_key.pub
+id_ed25519*
+id_rsa*
+*.pem
+known_hosts
+
+# Real config. Ship rephemeral.example.toml instead.
+rephemeral.toml
+.env
+.env.*
+
+# --- Device artwork -------------------------------------------------
+# Stock splash screens are reMarkable's copyrighted assets. They are
+# captured from the user's own device at runtime and stored outside the
+# repo. Nothing under here belongs in git. See README, "Backups".
+backups/
+originals/
+*.png
+*.jpg
+*.jpeg
+!docs/**/*.png
+
+# --- Python ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# --- macOS ----------------------------------------------------------
+.DS_Store

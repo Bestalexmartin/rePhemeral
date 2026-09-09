@@ -1,0 +1,10 @@
+# Copy to ~/.config/rephemeral/rephemeral.toml, or let `rephemeral setup`
+# write it for you.
+#
+# There is deliberately no password field. The device root password is used
+# once, to install the SSH key, and is never stored. Do not add it here.
+
+host = "10.11.99.1"
+username = "root"
+port = 22
+key_path = "~/.config/rephemeral/id_ed25519"
