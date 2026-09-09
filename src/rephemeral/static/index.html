@@ -665,7 +665,7 @@ async function doApply() {
   if (!r.ok) { msg(d.detail || 'Apply failed.', 'err'); syncApply(); return; }
   let out = `Written · ${d.size_kb} KB.` +
             (d.backed_up_now ? ' Stock image captured to backup first.' : '') +
-            ' The tablet may need a restart before you see it.';
+            ' Live now: sleep and wake the tablet to see it.';
   /* What the conversion actually did. With the preview step gone this is
      the only place it is reported, so it matters more than it did. */
   if (d.notes && d.notes.length) out += ' · ' + d.notes.join(' · ');

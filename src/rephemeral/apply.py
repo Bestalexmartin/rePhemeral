@@ -106,9 +106,11 @@ class Applier:
     def restart_ui(self) -> None:
         """Restart xochitl, the tablet's UI process.
 
-        Whether this is needed after a screen change is a property of the
-        firmware rather than something we can assume; see README. It
-        blanks the screen and returns to the document list, so it is never
-        done implicitly.
+        Not needed after a screen change. Confirmed on firmware build
+        20260827113527: xochitl reads these PNGs when it needs to draw
+        them rather than caching them at startup, so a written screen is
+        live immediately. Kept because restarting the UI is occasionally
+        useful for its own sake, but it blanks the display and returns to
+        the document list, so it is never done implicitly.
         """
         self.device.check("systemctl restart xochitl")

@@ -114,7 +114,7 @@ def cmd_set(args: argparse.Namespace) -> int:
             applier.restart_ui()
             print("Restarted xochitl.")
         else:
-            print("The tablet may need a restart before the change is visible.")
+            print("Live now. Sleep and wake the tablet to see a new sleep screen.")
     return 0
 
 
@@ -184,7 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("image")
     s.add_argument("--fit", default="cover", choices=("cover", "contain", "stretch"))
     s.add_argument("--greyscale", action="store_true")
-    s.add_argument("--restart", action="store_true", help="restart the tablet UI after")
+    s.add_argument("--restart", action="store_true",
+               help="restart the tablet UI after (not needed for screen changes)")
     s.add_argument("--force", action="store_true", help="allow diagnostic screens")
     s.set_defaults(func=cmd_set)
 

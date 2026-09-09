@@ -98,6 +98,13 @@ rephemeral ui         # opens the web interface on http://127.0.0.1:8765
 The password is used to install an SSH key and is never written to disk.
 Everything afterwards uses the key.
 
+A written screen is live immediately. `xochitl` reads these PNGs when it
+needs to draw them rather than caching them at startup, so there is no
+restart step: sleep and wake the tablet to see a new sleep screen, or
+restart it to see a new boot screen. The `Restart UI` button and
+`--restart` flag exist for their own sake and are not part of applying a
+screen.
+
 The CLI does the same work without the UI:
 
 ```bash
