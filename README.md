@@ -79,7 +79,9 @@ your `PATH`. Pick one of:
 # Run it from the venv directly, no setup:
 ./.venv/bin/rephemeral status
 
-# Or put it on your PATH, if ~/.local/bin is already there:
+# Or put it on your PATH, if ~/.local/bin is already there.
+# Run this from the repository root: it resolves $PWD, and from anywhere
+# else it will happily create a link that points at nothing.
 ln -sf "$PWD/.venv/bin/rephemeral" ~/.local/bin/rephemeral
 
 # Or activate the venv for the session:
@@ -89,6 +91,10 @@ source .venv/bin/activate
 The symlink works because the console script's shebang is an absolute
 path into the venv. Re-run it if you move the repository or rebuild the
 virtual environment.
+
+A dangling symlink reports `rephemeral: command not found`, which reads
+as a `PATH` problem and is not one. `readlink -e ~/.local/bin/rephemeral`
+prints nothing when the link is the thing that is broken.
 
 If you intend to commit, install the hooks too:
 

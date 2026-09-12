@@ -184,7 +184,13 @@ def cmd_ui(args: argparse.Namespace) -> int:
     # per request while routes are imported once, so an old server serves
     # new markup against old endpoints, which looks like a broken feature
     # rather than a stale server.
-    print(f"rePhemeral {__version__} on http://{args.bind}:{args.port}")
+    #
+    # Flushed explicitly because uvicorn.run() below never returns. Python
+    # block-buffers stdout when it is not a terminal, so redirected into a
+    # log file these lines would sit unwritten for the life of the server,
+    # which is exactly the case where you are reading a log to find out
+    # which version is running.
+    print(f"rePhemeral {__version__} on http://{args.bind}:{args.port}", flush=True)
 
     if not args.reload:
         from .web import app
@@ -197,7 +203,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     # filesystem writable. That is a development convenience, not something
     # to impose on someone replacing a sleep screen.
     package = Path(__file__).resolve().parent
-    print(f"  auto-reload on, watching {package}")
+    print(f"  auto-reload on, watching {package}", flush=True)
     uvicorn.run(
         # Reload needs an import string: the worker is a subprocess and has
         # to import the app itself.

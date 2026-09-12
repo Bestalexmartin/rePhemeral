@@ -20,6 +20,17 @@ While the major version is 0, a minor bump may contain breaking changes.
   gate. Both now name the Debian and Ubuntu package alongside the
   Homebrew one, so a Linux contributor is not left with a blocked commit
   and an install command that does not exist on their machine.
+- `rephemeral ui` flushes its startup lines. They are printed before
+  `uvicorn.run()`, which never returns, and Python block-buffers stdout
+  when it is not a terminal, so redirected into a log file they sat
+  unwritten for the life of the server. The version line exists to make a
+  stale process visible; reading a log to find out which version is
+  running was precisely the case where it was invisible.
+- The `PATH` symlink instruction now says to run it from the repository
+  root. It interpolates `$PWD`, so run from anywhere else it creates a
+  link pointing at nothing, and a dangling symlink reports
+  `command not found`, which reads as a `PATH` problem and is not one.
+  The surrounding note says how to tell the two apart.
 
 ### Changed
 
