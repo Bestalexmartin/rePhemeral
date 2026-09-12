@@ -1,0 +1,41 @@
+rePhemeral inspector — Linux verification
+captured 2026-09-11T22:17:35-07:00
+
+host:     Ubuntu 24.04.4 LTS, kernel 6.17.0-20-generic
+python:   Python 3.12.3
+commit:   b155bd4 on main
+usb link: enx7aca9c0073ea 10.11.99.12/27
+
+$ rephemeral inspector
+  ok    Python        3.12.3 at ~/Documents/Projects/rePhemeral/.venv/bin/python3
+  ok    Platform      linux, os.name=posix
+  ok    Dependencies  paramiko 5.0.0, Pillow 12.3.0
+  ok    Config        ~/.config/rephemeral/rephemeral.toml -> 10.11.99.1:22
+  ok    SSH key       ~/.config/rephemeral/id_ed25519, mode 600
+  ok    USB network   local address 10.11.99.12 reaches 10.11.99.1
+  ok    Port open     10.11.99.1:22 accepts connections
+  ok    SSH           authenticated as root@10.11.99.1
+  ok    Device        imx8mm-ferrari, build 20260827113527, 38.0 MB free on /
+  ok    Screens       all 11 present at their expected paths
+  ok    Backups       11 of 11 screens backed up for build 20260827113527; host copy at ~/.local/share/rephemeral/backups/20260827113527
+
+All checks passed.
+
+$ rephemeral status
+Device    imx8mm-ferrari at 10.11.99.1
+Firmware  build 20260827113527, kernel 6.12.49+git-imx8mm-ferrari-g2418a6dae57b
+Rootfs    38.0 MB free of 521 MB
+Backups   ~/.local/share/rephemeral/backups/20260827113527
+
+screen           state                                         size
+suspended        custom (applied by rePhemeral)                1620x2160
+starting         custom (applied by rePhemeral)                1620x2160
+starting_first   custom (applied by rePhemeral)                1620x2160
+rebooting        custom (applied by rePhemeral)                1620x2160
+poweroff         custom (applied by rePhemeral)                1620x2160
+batteryempty     custom (applied by rePhemeral)                1620x2160
+remotewipe       custom (applied by rePhemeral)                1620x2160
+factory          custom (applied by rePhemeral)                1620x2160
+carousel_1       custom (applied by rePhemeral)                1012x1012
+carousel_2       custom (applied by rePhemeral)                1012x1012
+carousel_3       custom (applied by rePhemeral)                1012x1012

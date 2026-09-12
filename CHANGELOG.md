@@ -56,7 +56,9 @@ While the major version is 0, a minor bump may contain breaking changes.
   to `poweroff.png` including the read-write remount, the atomic rename,
   the hash verification and the revert to read-only. Backups captured on
   macOS were read back correctly on Linux, manifest hashes and all, so
-  the on-device backup set travels between host platforms.
+  the on-device backup set travels between host platforms. The inspector
+  and `status` output is recorded in
+  [docs/linux-verification.txt](docs/linux-verification.txt).
 
 ## [0.6.0] - 2026-09-09
 
