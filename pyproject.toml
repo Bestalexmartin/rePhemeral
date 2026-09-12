@@ -1,6 +1,6 @@
 [project]
 name = "rephemeral"
-version = "0.6.0"
+version = "0.6.1"
 description = "Replace the sleep and restart screens on a reMarkable Paper Pro over USB."
 readme = "README.md"
 requires-python = ">=3.11"
