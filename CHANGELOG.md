@@ -47,7 +47,7 @@ While the major version is 0, a minor bump may contain breaking changes.
   no host platform assumptions held: every defect found on Ubuntu was in
   the documentation or the tooling around the code, not in the code.
   Verified on Ubuntu 24.04, Python 3.12.3, against paramiko 5.0.0 and
-  Pillow 12.3.0 — both major versions ahead of the floors in
+  Pillow 12.3.0, both major versions ahead of the floors in
   `pyproject.toml`, and neither needed a change.
 - The tablet's USB ethernet interface comes up on Linux with no
   configuration. The kernel binds it, the tablet's DHCP server addresses
@@ -88,7 +88,7 @@ the defects it found were long-standing and mine.
 
 ### Added
 
-- A test suite: 29 tests covering backup integrity, transfer safeguards,
+- A test suite: 30 tests covering backup integrity, transfer safeguards,
   SSH cleanup, image conversion, config handling and web requests. They
   use simulated devices and never write to a connected tablet.
 - A 32 MB cap on uploads, so an oversized file cannot be read into memory

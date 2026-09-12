@@ -1,10 +1,16 @@
-rePhemeral inspector — Linux verification
+rePhemeral inspector: Linux verification
 captured 2026-09-11T22:17:35-07:00
 
 host:     Ubuntu 24.04.4 LTS, kernel 6.17.0-20-generic
 python:   Python 3.12.3
 commit:   b155bd4 on main
-usb link: enx7aca9c0073ea 10.11.99.12/27
+usb link: enx<mac> 10.11.99.12/27
+
+Home paths read ~ and the interface's MAC reads <mac>: this file is
+public, and the raw capture carries a local username and a hardware
+address. The interface name is kept in its enx form because that is
+itself part of the result: Linux gave it a predictable MAC-derived name
+rather than usb0.
 
 $ rephemeral inspector
   ok    Python        3.12.3 at ~/Documents/Projects/rePhemeral/.venv/bin/python3
