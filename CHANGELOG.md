@@ -8,6 +8,45 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The install instructions failed on a stock Debian or Ubuntu. Those
+  distributions ship `python3` without `ensurepip`, so the documented
+  `python3 -m venv .venv` aborts on an otherwise complete Python
+  installation. The requirements now name the `venv` module explicitly
+  and give the `apt install python3-venv` line that precedes it.
+- The pre-commit hook and its installer told everyone to run
+  `brew install gitleaks`, which is macOS-only advice in a fail-closed
+  gate. Both now name the Debian and Ubuntu package alongside the
+  Homebrew one, so a Linux contributor is not left with a blocked commit
+  and an install command that does not exist on their machine.
+
+### Changed
+
+- Linux is tested rather than assumed. The roadmap said Linux "probably
+  already works"; it now says so on the strength of a run rather than a
+  reading of the source, and the section narrows to Windows, which
+  remains untested.
+
+### Notes
+
+- No source changes were needed. The claim that the Python side carries
+  no host platform assumptions held: every defect found on Ubuntu was in
+  the documentation or the tooling around the code, not in the code.
+  Verified on Ubuntu 24.04, Python 3.12.3, against paramiko 5.0.0 and
+  Pillow 12.3.0 — both major versions ahead of the floors in
+  `pyproject.toml`, and neither needed a change.
+- The tablet's USB ethernet interface comes up on Linux with no
+  configuration. The kernel binds it, the tablet's DHCP server addresses
+  it, and `10.11.99.1` answers. This was the item the roadmap called out
+  as least certain, and it needed nothing.
+- Verified against a live Paper Pro on build `20260827113527`: key
+  installation, the inspector's eleven checks, `status`, and a full write
+  to `poweroff.png` including the read-write remount, the atomic rename,
+  the hash verification and the revert to read-only. Backups captured on
+  macOS were read back correctly on Linux, manifest hashes and all, so
+  the on-device backup set travels between host platforms.
+
 ## [0.6.0] - 2026-09-09
 
 ### Added

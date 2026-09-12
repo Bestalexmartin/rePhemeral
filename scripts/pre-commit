@@ -8,14 +8,18 @@
 # history rather than after, when it is already compromised.
 #
 # Fail-closed: a missing gitleaks binary blocks the commit rather than
-# waving it through. Install with: brew install gitleaks
+# waving it through. Install it with your platform's package manager:
+# `sudo apt install gitleaks` on Debian and Ubuntu, `brew install gitleaks`
+# on macOS.
 #
 # Install this hook with ./scripts/setup-hooks.sh
 set -uo pipefail
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "gitleaks gate: gitleaks is not installed; commit blocked (fail-closed)." >&2
-  echo "gitleaks gate: install with: brew install gitleaks" >&2
+  echo "gitleaks gate: install it with:" >&2
+  echo "gitleaks gate:   sudo apt install gitleaks   (Debian, Ubuntu)" >&2
+  echo "gitleaks gate:   brew install gitleaks       (macOS)" >&2
   exit 1
 fi
 

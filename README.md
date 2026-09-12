@@ -48,7 +48,15 @@ You will need it exactly once.
 
 - A reMarkable Paper Pro with Developer Mode enabled.
 - A USB cable.
-- Python 3.11 or newer.
+- Python 3.11 or newer, with the standard library's `venv` module.
+
+On Debian and Ubuntu that last clause is not a formality. Those
+distributions ship `python3` without `ensurepip`, so `python3 -m venv`
+fails on an otherwise complete Python. Install it first:
+
+```bash
+sudo apt install python3-venv
+```
 
 Developed and tested against firmware build `20260827113527`
 (v3.28.0.172) on `imx8mm-ferrari` hardware. reMarkable documents none of
@@ -238,10 +246,9 @@ actually needs is someone with the hardware to verify the paths rather
 than assume they carried over. Contributions welcome, particularly with a
 `/etc/version` and a directory listing attached.
 
-### Windows and Linux
+### Windows
 
-Probably already works on Linux, plausibly on Windows, but neither has
-been tested.
+Linux is tested; Windows is not.
 
 The Python side carries no host platform assumptions. There are no
 `subprocess` calls, host paths are built with `pathlib` rather than
@@ -249,21 +256,22 @@ strung together, device paths use `posixpath` because the tablet is
 always Linux, and every shell command in the codebase runs on the tablet
 rather than on your machine. Nothing needs a POSIX shell locally.
 
-What stands between that and a supported claim:
+That claim survived contact with Ubuntu without a single source change,
+so the remaining doubt is Windows specifically:
 
 - **The USB network interface.** The tablet presents itself as a USB
-  ethernet device and serves DHCP on `10.11.99.1`. Linux handles this in
-  the kernel. Windows generally does, though it is the part most likely
-  to need attention.
-- **Key permissions on Windows.** The generated SSH key is written with
-  mode `600`. Windows cannot express that through `chmod`, so the key
-  would sit readable by other accounts on a shared machine. That wants
-  proper ACL handling before Windows is called supported.
+  ethernet device and serves DHCP on `10.11.99.1`. Linux brings this up
+  in the kernel with no configuration. Windows generally does too, though
+  it is the part most likely to need attention.
+- **Key permissions.** The generated SSH key is written with mode `600`.
+  Windows cannot express that through `chmod`, so the key would sit
+  readable by other accounts on a shared machine. That wants proper ACL
+  handling before Windows is called supported.
 - **Config locations.** `~/.config` and `~/.local/share` are the right
-  homes on Linux and work on Windows, but `%APPDATA%` is what a Windows
+  homes on Linux, and work on Windows, but `%APPDATA%` is what a Windows
   user would expect.
 
-If you run it on either, an issue saying what happened is useful whether
+If you run it on Windows, an issue saying what happened is useful whether
 it worked or not.
 
 ### A standalone application
