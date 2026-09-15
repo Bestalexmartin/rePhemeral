@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,13 +20,18 @@ import paramiko
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
+from . import paths
 from .device import DEFAULT_HOST, DEFAULT_USER, Device
 
-CONFIG_DIR = Path(
-    os.environ.get("REPHEMERAL_CONFIG_DIR", Path.home() / ".config" / "rephemeral")
-)
-CONFIG_PATH = CONFIG_DIR / "rephemeral.toml"
-KEY_PATH = CONFIG_DIR / "id_ed25519"
+CONFIG_NAME = "rephemeral.toml"
+KEY_NAME = "id_ed25519"
+
+CONFIG_DIR = paths.CONFIG_DIR
+CONFIG_PATH = CONFIG_DIR / CONFIG_NAME
+KEY_PATH = CONFIG_DIR / KEY_NAME
+
+#: Who a private file is left readable by, for messages.
+PRIVATE_READERS = "its owner and SYSTEM" if os.name == "nt" else "its owner"
 
 
 @dataclass
@@ -41,7 +47,7 @@ class Config:
 
     def save(self, path: Path | None = None) -> Path:
         target = path or CONFIG_PATH
-        target.parent.mkdir(parents=True, exist_ok=True)
+        make_private_dir(target.parent)
         target.write_text(
             "# rePhemeral configuration.\n"
             "# The device password is deliberately absent: it is used once to\n"
@@ -68,28 +74,94 @@ def load(path: Path | None = None) -> Config:
     )
 
 
+# -- keeping the key private --------------------------------------------
+
+def restrict_private(path: Path) -> None:
+    """Make path accessible to its owner alone.
+
+    POSIX expresses that with a mode. Windows cannot: chmod there only
+    toggles the read-only attribute and os.open ignores its mode argument,
+    so a file keeps whatever ACL it inherits, and neither call raises. The
+    platforms differ in kind here, which is why this branches on os.name.
+    On Windows SYSTEM keeps access alongside the owner; see winacl.restrict.
+    """
+    if os.name == "nt":
+        from . import winacl
+        winacl.restrict(path)
+    else:
+        path.chmod(0o700 if path.is_dir() else 0o600)
+
+
+def key_exposure(path: Path) -> list[str]:
+    """Who, besides PRIVATE_READERS, can read path. Empty when it is private."""
+    if os.name == "nt":
+        from . import winacl
+        return [name for _sid, name in winacl.other_readers(path)]
+    mode = stat.S_IMODE(path.stat().st_mode)
+    return [who for who, bits in (("its group", 0o070), ("other users", 0o007))
+            if mode & bits]
+
+
+def make_private_dir(path: Path) -> None:
+    """Create path if it is missing, restricted to its owner.
+
+    Files written into a directory created here inherit that restriction.
+    An existing directory is left as it is, since it may hold more than
+    this tool's files.
+    """
+    if path.is_dir():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.mkdir()
+    restrict_private(path)
+
+
+def write_private(path: Path, data: bytes) -> None:
+    """Write a new file that only its owner can read.
+
+    The file is created empty and restricted before any of data reaches
+    it, so there is no moment at which the secret sits on disk readable
+    by anyone else. Refuses to overwrite an existing file.
+    """
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    try:
+        restrict_private(path)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    # r+b opens the file that was just restricted, rather than replacing it.
+    with open(path, "r+b") as stream:
+        stream.write(data)
+
+
+def pub_path(key_path: Path) -> Path:
+    return key_path.with_suffix(key_path.suffix + ".pub")
+
+
 def ensure_key(key_path: Path | None = None) -> Path:
-    """Generate the tool's keypair if it does not exist. Returns its path."""
+    """Generate the tool's keypair if it does not exist, and make sure the
+    private half is restricted either way. Returns its path."""
     target = key_path or KEY_PATH
     if target.is_file():
+        # An install made before the tool restricted keys on Windows, or a
+        # key whose permissions were loosened since, is fixed here.
+        restrict_private(target)
         return target
-    target.parent.mkdir(parents=True, exist_ok=True)
+    make_private_dir(target.parent)
     # paramiko can load ed25519 keys but cannot generate them, so the
     # keypair is produced with cryptography (already a paramiko dependency)
     # and written in OpenSSH format for both paramiko and ssh(1) to read.
     private = ed25519.Ed25519PrivateKey.generate()
-    with open(target, "xb", opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
-        stream.write(private.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.OpenSSH,
-            encryption_algorithm=serialization.NoEncryption(),
-        ))
-    target.chmod(0o600)
+    write_private(target, private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=serialization.NoEncryption(),
+    ))
     pub_line = private.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH,
         format=serialization.PublicFormat.OpenSSH,
     ).decode()
-    pub = target.with_suffix(target.suffix + ".pub")
+    pub = pub_path(target)
     pub.write_text(f"{pub_line} rephemeral\n")
     pub.chmod(0o644)
     return target
@@ -97,7 +169,7 @@ def ensure_key(key_path: Path | None = None) -> Path:
 
 def public_key_line(key_path: Path | None = None) -> str:
     target = key_path or KEY_PATH
-    pub = target.with_suffix(target.suffix + ".pub")
+    pub = pub_path(target)
     if pub.is_file():
         return pub.read_text().strip()
     key = paramiko.Ed25519Key.from_private_key_file(str(target))

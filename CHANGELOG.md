@@ -8,6 +8,55 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Security
+
+- On Windows the SSH key was readable by whoever could read its folder.
+  `os.open`'s mode and `chmod(0o600)` do nothing there and raise nothing,
+  so the key kept its folder's ACL. Under the profile that happened to
+  exclude other standard accounts. Under a folder in `C:\`, measured on
+  Windows 11, it granted `BUILTIN\Users` read and `Authenticated Users`
+  modify. The key now gets an explicit, protected ACL granting the owner
+  and SYSTEM and nobody else, not even Administrators. The ACL is set on
+  the empty file before any key bytes are written. `rephemeral setup`
+  restricts an existing key too.
+
+### Changed
+
+- On Windows, configuration, the key and backups live in
+  `%LOCALAPPDATA%\rephemeral` rather than `~\.config\rephemeral` and
+  `~\.local\share\rephemeral`. `LOCALAPPDATA` rather than `APPDATA`,
+  because roaming profiles copy `APPDATA` between machines. macOS and
+  Linux are unchanged.
+- An existing Windows install is copied across on the first run of any
+  command. Every backup copy is checked against its source, and against
+  the stock hash its manifest records, before being renamed into place.
+  The config's `key_path` is repointed at the copied key. Nothing is moved
+  or deleted: the old folders stay until you remove them, and
+  `rephemeral inspector` names them for as long as they exist.
+
+### Added
+
+- `REPHEMERAL_DATA_DIR` sets where backups go, alongside the existing
+  `REPHEMERAL_CONFIG_DIR`.
+
+### Fixed
+
+- The inspector's SSH key check reads the key's real permissions on
+  Windows: the ACL there, the mode on POSIX. It no longer warns every time
+  on Windows, and warns with the names of anyone else who can read the key.
+- With the tablet unplugged, the inspector reported "USB network" as a
+  warning, blamed "something else answering", and failed on "Port open"
+  after a timeout. On any machine with a default route, `connect()` on a
+  UDP socket succeeds through the LAN gateway, so the "no route" failure
+  never fired. Routing to the tablet's USB address from any other subnet
+  is now the failure, and the checks after it are skipped. This affected
+  every platform.
+- The inspector's summary said the checks "below" a failure are skipped.
+  It is the checks that depend on one; an independent check after a
+  failure still runs.
+- `rephemeral ui --bind ::1` printed `http://::1:8765`, which is not a
+  URL. IPv6 addresses are now bracketed.
+
 ## [0.7.0] - 2026-09-15
 
 ### Added

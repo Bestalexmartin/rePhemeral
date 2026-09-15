@@ -1,57 +1,288 @@
-rePhemeral inspector: Windows verification
-captured 2026-09-15T11:35:06-07:00
+rePhemeral: Windows verification
+captured 2026-09-15, 13:22 to 14:05 -07:00
 
-host:     Microsoft Windows 11 Home 25H2, build 26200.9168
-python:   Python 3.12.10, python.org installer via winget, per-user
-commit:   0987905 on main
-usb link: Ethernet 2 10.11.99.6/27, IBM USB Remote NDIS Network Device
+host:      Microsoft Windows 11 Home 25H2, build 26200.9168
+shell:     PowerShell (the user's console; tool runs in Windows PowerShell 5.1)
+python:    Python 3.12.10, python.org installer via winget, per-user
+tree:      branch m3.2-windows, from 19c3da1 plus the changes it records
+usb link:  Ethernet 2, 10.11.99.6/27 by DHCP, IBM USB Remote NDIS Network
+           Device on Windows' in-box driver 6.2.0.127, bound with nothing but
+           the cable plugged in
+tablet:    imx8mm-ferrari, firmware build 20260827113527 before (13:22) and
+           after (14:03)
 
-Home paths read ~, standing for %USERPROFILE%: this file is public, and
-the raw capture carries a local username. The interface needed no
-scrubbing. Windows bound its in-box RNDIS driver (6.2.0.127) with no
-configuration, named the interface "Ethernet 2" rather than anything
-derived from its hardware address, and took its address from the
-tablet's DHCP server.
+Home paths read ~, standing for %USERPROFILE%; the machine and account
+names read <host> and <user>. This file is public.
+
+
+== Install, following the README verbatim ==============================
+
+In a fresh folder standing in for $HOME, Windows PowerShell 5.1:
+
+$ git clone https://github.com/Bestalexmartin/rePhemeral.git      # 19c3da1
+$ cd rePhemeral
+$ py -3.12 -m venv .venv                                           # exit 0
+$ .\.venv\Scripts\pip install -e .                                 # exit 0
+Using cached paramiko-5.0.0-py3-none-any.whl (208 kB)
+Using cached pillow-12.3.0-cp312-cp312-win_amd64.whl (7.2 MB)
+Using cached bcrypt-5.0.0-cp39-abi3-win_amd64.whl (150 kB)
+Using cached cryptography-50.0.1-cp311-abi3-win_amd64.whl (3.8 MB)
+Using cached pynacl-1.6.2-cp38-abi3-win_amd64.whl (239 kB)
+Using cached cffi-2.1.1-cp312-cp312-win_amd64.whl (185 kB)
+Successfully built rephemeral        # its own editable py3-none-any wheel, the only build
+$ .\.venv\Scripts\rephemeral.exe --help                            # usage, exit 0
+
+Every compiled dependency arrived as a prebuilt win_amd64 wheel. No
+compiler was installed or needed.
+
+Activating the venv instead, under the machine's own policy (every scope
+Undefined, in a child PowerShell with no override):
+. .\.venv\Scripts\Activate.ps1
+  ...\.venv\Scripts\Activate.ps1 cannot be loaded because running scripts is disabled on this system.
+Hence the README's PATH route, which needs no policy change.
+
+
+== Before: where the key could be read ==================================
+
+The code as released writes the key with os.open(..., 0o600) and
+chmod(0o600). Neither does anything on Windows, and neither raises: the
+key keeps its folder's ACL. In the profile that happens to exclude other
+standard accounts. In a folder outside the profile, it does not.
+
+$ python -c "config.ensure_key(Path(r'C:\rephemeral-acl-probe\id_ed25519'))"   # released code
+$ icacls C:\rephemeral-acl-probe\id_ed25519
+C:\rephemeral-acl-probe\id_ed25519 BUILTIN\Administrators:(I)(F)
+                                   NT AUTHORITY\SYSTEM:(I)(F)
+                                   BUILTIN\Users:(I)(RX)
+                                   NT AUTHORITY\Authenticated Users:(I)(M)
+
+From a second local account, rephemeral-probe, a standard user and not in
+Administrators, reading the file with `cmd /c type` under runas, output
+discarded:
+
+  key in C:\rephemeral-acl-probe (released code)     READ-SUCCEEDED
+  key in ~\.config\rephemeral (released install)     Access is denied.
+
+
+== First run of the new code: an existing install is copied ============
 
 $ rephemeral inspector
+Copied the configuration and SSH key from ~\.config\rephemeral to ~\AppData\Local\rephemeral. The originals are left in place; delete them once you are satisfied.
+Copied 12 backup file(s) from ~\.local\share\rephemeral\backups to ~\AppData\Local\rephemeral\backups. The originals are left in place; delete them once you are satisfied.
   ok    Python        3.12.10 at ~\Projects\rePhemeral\.venv\Scripts\python.exe
   ok    Platform      win32, os.name=nt; POSIX file modes do not apply, see the SSH key check
   ok    Dependencies  paramiko 5.0.0, Pillow 12.3.0
-  ok    Config        ~\.config\rephemeral\rephemeral.toml -> 10.11.99.1:22
-  warn  SSH key       ~\.config\rephemeral\id_ed25519 exists. Windows cannot express POSIX mode 600, so this key may be readable by other accounts on this machine. Restrict it with ACLs on a shared computer.
+  ok    Config        ~\AppData\Local\rephemeral\rephemeral.toml -> 10.11.99.1:22; an earlier copy is still at ~\.config\rephemeral, and can be deleted once you are satisfied
+  ok    SSH key       ~\AppData\Local\rephemeral\id_ed25519, readable only by its owner and SYSTEM
   ok    USB network   local address 10.11.99.6 reaches 10.11.99.1
   ok    Port open     10.11.99.1:22 accepts connections
   ok    SSH           authenticated as root@10.11.99.1
   ok    Device        imx8mm-ferrari, build 20260827113527, 38.0 MB free on /
   ok    Screens       all 11 present at their expected paths
-  ok    Backups       11 of 11 screens backed up for build 20260827113527; host copy at ~\.local\share\rephemeral\backups\20260827113527
+  ok    Backups       11 of 11 screens backed up for build 20260827113527; host copy at ~\AppData\Local\rephemeral\backups\20260827113527; an earlier copy is still at ~\.local\share\rephemeral\backups, and can be deleted once you are satisfied
 
-No failures, 1 warning(s).
+All checks passed.
+exit=0
 
-The warning is the inspector declining to judge, not a measured fault.
-The key inherits its ACL from the profile directory, which grants full
-control to the owning account, SYSTEM and Administrators, and to no other
-account:
+Every file under the old locations hashed the same before and after. All
+12 backup files in the new location are byte-identical to the originals.
+The copied config names the copied key:
 
-  ~\.config\rephemeral\id_ed25519  NT AUTHORITY\SYSTEM:(I)(F)
-                                   BUILTIN\Administrators:(I)(F)
-                                   <user>:(I)(F)
+  key_path = "~\\AppData\\Local\\rephemeral\\id_ed25519"
 
+$ icacls ~\AppData\Local\rephemeral
+~\AppData\Local\rephemeral <host>\<user>:(OI)(CI)(F)
+                           NT AUTHORITY\SYSTEM:(OI)(CI)(F)
+$ icacls ~\AppData\Local\rephemeral\id_ed25519
+~\AppData\Local\rephemeral\id_ed25519 <host>\<user>:(F)
+                                      NT AUTHORITY\SYSTEM:(F)
+
+The key's ACL is explicit and protected, so nothing is inherited. The
+folder's entries are inheritable, so the .pub, the toml and the backups
+under it carry the same two (I) entries.
+
+
+== After: the same key, restricted by the tool ========================
+
+$ python -c "config.ensure_key(Path(r'C:\rephemeral-acl-probe\id_ed25519'))"   # new code, existing key
+$ icacls C:\rephemeral-acl-probe\id_ed25519
+C:\rephemeral-acl-probe\id_ed25519 <host>\<user>:(F)
+                                   NT AUTHORITY\SYSTEM:(F)
+
+key_exposure before: ['BUILTIN\\Administrators', 'BUILTIN\\Users', 'NT AUTHORITY\\Authenticated Users']
+key_exposure after:  []
+The key's sha256 is unchanged.
+
+From rephemeral-probe again:
+
+  key in C:\rephemeral-acl-probe (restricted)        Access is denied.   (14:46; READ-SUCCEEDED at 14:01)
+  key in ~\AppData\Local\rephemeral (new install)    Access is denied.   (14:47)
+
+C:\rephemeral-acl-probe itself still grants Users read, so the key's own
+ACL is the only thing refusing the second account.
+
+
+== setup, run again with the new code =================================
+
+$ rephemeral setup        # the user's PowerShell console, root password typed once
+Afterwards the files in ~\AppData\Local\rephemeral were:
+  id_ed25519        unchanged: same sha256 and mtime as when migrated; still <host>\<user>:(F), SYSTEM:(F)
+  id_ed25519.pub    unchanged
+  rephemeral.toml   rewritten 14:48:27, byte-identical:
+    host = "10.11.99.1"
+    username = "root"
+    port = 22
+    key_path = "~\\AppData\\Local\\rephemeral\\id_ed25519"
+No password is present, and nothing else was written. ~\.config\rephemeral
+was untouched. The inspector then authenticated as root@10.11.99.1 and
+passed every check.
+
+
+== The workflow ========================================================
+
+$ rephemeral backup
+Capturing stock screens for build 20260827113527
+  suspended        already backed up
+  ...all 11 screens read "already backed up"...
+exit=0
+The tablet's manifest hashed 7ecfff88... before and after.
+
+$ rephemeral restore suspended
+Restored suspended (sha256 4823bd219ec600d3)
+exit=0
+  device suspended.png     4823bd219ec600d3729e701c95f85fb670f072793183515fd035171675bf1075
+  manifest stock_sha256    4823bd219ec600d3729e701c95f85fb670f072793183515fd035171675bf1075
+  rootfs                   /dev/root / ext4 ro,relatime 0 0
 $ rephemeral status
-Device    imx8mm-ferrari at 10.11.99.1
-Firmware  build 20260827113527, kernel 6.12.49+git-imx8mm-ferrari-g2418a6dae57b
-Rootfs    38.0 MB free of 521 MB
-Backups   ~\.local\share\rephemeral\backups\20260827113527
-
-screen           state                                         size
-suspended        custom (applied by rePhemeral)                1620x2160
+suspended        stock                                         1620x2160
 starting         custom (applied by rePhemeral)                1620x2160
-starting_first   custom (applied by rePhemeral)                1620x2160
-rebooting        custom (applied by rePhemeral)                1620x2160
-poweroff         custom (applied by rePhemeral)                1620x2160
-batteryempty     custom (applied by rePhemeral)                1620x2160
-remotewipe       custom (applied by rePhemeral)                1620x2160
-factory          custom (applied by rePhemeral)                1620x2160
-carousel_1       custom (applied by rePhemeral)                1012x1012
-carousel_2       custom (applied by rePhemeral)                1012x1012
-carousel_3       custom (applied by rePhemeral)                1012x1012
+...the other nine screens read the same...
+
+Asleep, the tablet showed the stock sleep screen with no restart. That
+stock art was captured on another machine and synced from the tablet.
+
+$ rephemeral set suspended suspended-custom.png      # the image that was there before
+Wrote /usr/share/remarkable/suspended.png (58 KB)
+  sha256 3dbd8dfcb82daeef
+Live now. Sleep and wake the tablet to see a new sleep screen.
+exit=0
+  device suspended.png     3dbd8dfcb82daeefe5571febb0bdcc7a0025b881c91932aaea493fc20521a87f
+  saved image              3dbd8dfcb82daeefe5571febb0bdcc7a0025b881c91932aaea493fc20521a87f
+  rootfs                   /dev/root / ext4 ro,relatime 0 0
+
+Asleep again, the tablet showed the custom screen, again with no restart.
+
+
+== Refusing to launder an applied image as stock ======================
+
+StockAlreadyLost fires only when a screen has no stock record and its
+current image is one the tool wrote. The tool captures before its first
+write, so that state cannot arise honestly on a real tablet. This ran the
+real capture against the real tablet over SSH: the device's own sha256,
+and is_ours, against a manifest held in memory with poweroff's stock
+record absent. Nothing was saved, and the backup directory pointed at a
+scratch path.
+
+  device poweroff sha256      3fe833fabfe0b581725b5c4a32308b272437b1d9c1308131f5b4b157ba25fe6a
+  real manifest stock_sha256  6aea51a596a4b7e700efbbffc3e7efcb5cb246daa90e211e4ff21dc22b7acf97
+  real manifest is_ours       True
+  RESULT: StockAlreadyLost raised: poweroff: the image on the device is one rePhemeral wrote, and no stock backup exists for build 20260827113527. Refusing to record a custom image as stock. Restore this screen from another backup, or reflash, before capturing.
+  probe dir created on device: False
+  device poweroff sha256 after 3fe833fabfe0b581725b5c4a32308b272437b1d9c1308131f5b4b157ba25fe6a
+  tablet manifest sha256 7ecfff88... before and after
+
+
+== The link going down =================================================
+
+The inspector ran in a loop while the tablet slept, which drops the USB
+interface just as pulling the cable does. PowerShell's $LASTEXITCODE is
+recorded for each run.
+
+=== 13:43:30 exit=1
+  FAIL  USB network   10.11.99.1 would be reached via 192.168.0.4, which is not the tablet's USB interface, so that interface is not up. Check the cable, and that the OS bound a driver to the device.
+  skip  Port open     no route to the tablet
+  skip  SSH           no route to the tablet
+  skip  Device        no route to the tablet
+  skip  Screens       no route to the tablet
+  skip  Backups       no route to the tablet
+1 failed, 0 warning(s). The first failure is usually the only real one; checks that depend on a failed one are skipped rather than run.
+=== 13:45:07 exit=0   (tablet awake; all checks passed)
+
+The released code reported that same state as "warn USB network ...
+Something else may be answering", then "FAIL Port open" after a timeout.
+
+With the page open in a browser on this machine, pulling the cable showed
+"Disconnected" and "No tablet detected". Plugging it back in reloaded the
+screens and showed the tablet's board, firmware and free space.
+
+
+== Web UI ==============================================================
+
+$ rephemeral ui
+rePhemeral 0.7.0 on http://127.0.0.1:8765
+  TCP    127.0.0.1:8765    LISTENING
+
+GET http://127.0.0.1:8765/                         200
+GET http://localhost:8765/                         200
+GET http://[::1]:8765/ (default bind)              connection refused
+GET /favicon.png                                   200
+GET /api/ping                                      200 {"reachable":true}
+Host: localhost:8765                               200
+Host: [::1]:8765                                   200
+Host: evil.example                                 400
+Host: [::1].evil.example                           400
+POST /api/backup, Origin: http://evil.example      403
+GET /, Origin: http://localhost:8765 via localhost 200
+Sec-Fetch-Site: none / same-origin / same-site     200
+Sec-Fetch-Site: cross-site                         403
+
+$ rephemeral ui --bind ::1 --port 8766
+  TCP    [::1]:8766        LISTENING
+GET http://[::1]:8766/                             200
+GET http://127.0.0.1:8766/                         connection refused
+Host: evil.example                                 400
+
+So the default bind answers IPv4 loopback only, and [::1] is admitted as a
+Host once the server listens there. Its startup line printed
+http://::1:8766, which is not a URL; it now prints http://[::1]:8766.
+
+In a browser on this machine, typing http://127.0.0.1:8765/ loaded the
+app and connected to the tablet. The network panel showed every request
+going to 127.0.0.1:8765.
+
+$ rephemeral ui --reload --port 8767        # in the user's PowerShell console
+rePhemeral 0.7.0 on http://127.0.0.1:8767
+  auto-reload on, watching ~\Projects\rePhemeral\src\rephemeral
+
+The process tree was the venv's rephemeral.exe, the venv python.exe
+launcher, the base interpreter as the reload supervisor holding the
+socket, and a spawned worker:
+  "python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=22316, ...)" "--multiprocessing-fork"
+
+With web.py's mtime touched, the worker was replaced: 11536 exited and
+13296 started. The page still returned 200 and /api/ping reported the
+tablet reachable. The plain server on 8765 kept its process and did not
+reload.
+
+After Ctrl+C in that console, no process was listening on 8767. The
+launcher, the venv python, the supervisor and the worker had all exited,
+and no spawn_main process remained.
+
+Started instead with no console (Start-Process -WindowStyle Hidden), the
+reloader logged "Reloading..." but the old worker never exited. On Windows
+uvicorn restarts a worker by sending it CTRL_C_EVENT, which a process with
+no console does not receive. That is a property of that test harness, not
+of `rephemeral ui --reload` run from a terminal.
+
+
+== End state ===========================================================
+
+Firmware build 20260827113527, rootfs ro, inspector all ok. All 11 stock
+backups, on the tablet and on this machine, hash the same as the 13:25
+baseline. The tablet's manifest differs only by one applied entry, for
+suspended (3dbd8dfc..., 20:57:24 UTC), from setting that screen back.
+Every screen reads custom (applied by rePhemeral), as it did at the start.
+
+$ pytest -q
+71 passed, 2 skipped
+SKIPPED [2] tests\test_safety.py: runs the tablet-side command in a POSIX shell

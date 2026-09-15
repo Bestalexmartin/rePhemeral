@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import config, inspector, screens
+from . import config, inspector, migrate, screens
 from .apply import Applier
 from .backup import BackupError, BackupStore
 from .device import Device, DeviceError
@@ -241,8 +241,8 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     print()
     if failed:
         print(f"{len(failed)} failed, {len(warned)} warning(s). "
-              f"The first failure is usually the only real one; the checks "
-              f"below it are skipped rather than run.")
+              f"The first failure is usually the only real one; checks that "
+              f"depend on a failed one are skipped rather than run.")
         return 1
     if warned:
         print(f"No failures, {len(warned)} warning(s).")
@@ -270,7 +270,9 @@ def cmd_ui(args: argparse.Namespace) -> int:
     # log file these lines would sit unwritten for the life of the server,
     # which is exactly the case where you are reading a log to find out
     # which version is running.
-    print(f"rePhemeral {__version__} on http://{args.bind}:{args.port}", flush=True)
+    # An IPv6 literal needs brackets in a URL, or the port reads as part of it.
+    host = f"[{args.bind}]" if ":" in args.bind else args.bind
+    print(f"rePhemeral {__version__} on http://{host}:{args.port}", flush=True)
 
     if not args.reload:
         from .web import app
@@ -349,6 +351,17 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_ui)
 
     args = p.parse_args(argv)
+    try:
+        report = migrate.run()
+    except OSError as exc:
+        print(f"Could not copy rePhemeral's files from their previous location: {exc}. "
+              f"The originals are untouched.", file=sys.stderr)
+        return 2
+    for line in report.copied:
+        print(f"Copied {line}. The originals are left in place; delete them once "
+              f"you are satisfied.", file=sys.stderr)
+    for line in report.problems:
+        print(line, file=sys.stderr)
     try:
         return args.func(args)
     except DeviceError as exc:

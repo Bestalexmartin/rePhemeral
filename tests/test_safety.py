@@ -23,14 +23,58 @@ def test_key_created_private_and_reused(tmp_path):
     path = tmp_path / 'key'
     config.ensure_key(path)
     original = path.read_bytes()
-    # Windows has no POSIX mode to assert; the key takes its ACL from the
-    # directory it is written into, which the inspector warns about
-    # rather than reads.
+    # A mode on POSIX, an ACL on Windows: either way nobody else can read it.
+    assert config.key_exposure(path) == []
     if os.name != 'nt':
         assert path.stat().st_mode & 0o777 == 0o600
     config.ensure_key(path)
     assert path.read_bytes() == original
     assert config.public_key_line(path).startswith('ssh-ed25519 ')
+
+
+def _loosen(path):
+    """Make a file readable by other accounts, the way each platform allows."""
+    if os.name == 'nt':
+        from rephemeral import winacl
+        winacl.set_dacl(path, f'D:P(A;;FA;;;{winacl.current_user_sid()})(A;;FR;;;BU)')
+    else:
+        path.chmod(0o644)
+
+
+def test_loosened_key_is_reported_then_restricted_again(tmp_path):
+    path = config.ensure_key(tmp_path / 'key')
+    _loosen(path)
+    assert config.key_exposure(path) != []
+    config.ensure_key(path)
+    assert config.key_exposure(path) == []
+
+
+def test_key_bytes_never_reach_an_unrestricted_file(tmp_path, monkeypatch):
+    path = tmp_path / 'secret'
+    sizes = []
+    real = config.restrict_private
+    monkeypatch.setattr(config, 'restrict_private',
+                        lambda p: sizes.append(p.stat().st_size) or real(p))
+    config.write_private(path, b'private')
+    assert sizes == [0]
+    assert path.read_bytes() == b'private'
+
+
+def test_failed_restriction_leaves_no_file(tmp_path, monkeypatch):
+    path = tmp_path / 'secret'
+    monkeypatch.setattr(config, 'restrict_private', MagicMock(side_effect=OSError('denied')))
+    with pytest.raises(OSError):
+        config.write_private(path, b'private')
+    assert not path.exists()
+
+
+def test_private_dir_is_restricted_only_when_created(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(config, 'restrict_private', calls.append)
+    config.make_private_dir(tmp_path)
+    assert calls == []
+    config.make_private_dir(tmp_path / 'new' / 'rephemeral')
+    assert calls == [tmp_path / 'new' / 'rephemeral']
 
 
 @pytest.mark.parametrize('failure', ['connect', 'sftp', 'identity'])
@@ -172,6 +216,38 @@ def test_remove_key_handles_last_key_and_preserves_others(tmp_path, other):
     subprocess.run(['/bin/sh', '-c', command], check=True)
     assert authorized.read_text() == other
     assert authorized.stat().st_mode & 0o777 == 0o600
+
+
+def test_device_paths_never_carry_a_backslash(tmp_path):
+    """Host paths are Windows paths on Windows; device paths must stay POSIX.
+
+    Runs a capture, an apply, a restore and a batch restore against a
+    simulated tablet, with the host backup root under tmp_path, and checks
+    every string handed to the device.
+    """
+    raw = io.BytesIO()
+    Image.new('RGB', (4, 4), 'white').save(raw, format='PNG')
+    stock = raw.getvalue()
+    stock_sha = hashlib.sha256(stock).hexdigest()
+    device = MagicMock()
+    device.exists.side_effect = lambda path: not path.endswith('manifest.json')
+    device.read_bytes.return_value = stock
+    device.sha256.return_value = stock_sha
+    device.write_bytes.side_effect = lambda path, data: hashlib.sha256(data).hexdigest()
+
+    store = BackupStore(device, '20260827113527', host_root=tmp_path)
+    applier = Applier(device, store)
+    screen = screens.get('suspended')
+    applier.apply(screen, stock, source=str(tmp_path / 'mixed/sep\\image.png'))
+    applier.restore(screen)
+    applier.restore_all(screens.SCREENS)
+
+    strings = [arg for call in device.mock_calls for arg in call.args if isinstance(arg, str)]
+    assert any(s.startswith('/home/root/.rephemeral/backups/') for s in strings)
+    assert all('\\' not in s for s in strings), [s for s in strings if '\\' in s]
+    for call in device.mock_calls:
+        if call[0] in ('exists', 'read_bytes', 'write_bytes', 'write_home_bytes', 'sha256'):
+            assert call.args[0].startswith('/'), call
 
 
 def test_command_disconnect_is_normalized_and_channel_closed():

@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from shlex import quote
 
+from . import paths
 from .device import Device
 from .screens import Screen
 
@@ -41,8 +42,8 @@ SCHEMA_VERSION = 1
 #: is separate from the rootfs, so it survives firmware updates.
 DEVICE_BACKUP_ROOT = "/home/root/.rephemeral/backups"
 
-#: Host-side backup root.
-HOST_BACKUP_ROOT = Path.home() / ".local" / "share" / "rephemeral" / "backups"
+#: Host-side backup root. See paths for where that is on each platform.
+HOST_BACKUP_ROOT = paths.BACKUP_DIR
 
 MANIFEST_NAME = "manifest.json"
 

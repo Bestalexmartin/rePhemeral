@@ -14,11 +14,11 @@ from __future__ import annotations
 import ipaddress
 import os
 import socket
-import stat
 import sys
 from dataclasses import dataclass
 
-from . import config, screens
+from . import config, migrate, screens
+from .device import DEFAULT_HOST
 
 OK, WARN, FAIL, SKIP = "ok", "warn", "FAIL", "skip"
 
@@ -59,9 +59,16 @@ def _deps() -> Check:
     return Check("Dependencies", OK, ", ".join(found))
 
 
+def _leftover(kind: str) -> str:
+    old = migrate.leftovers().get(kind)
+    return (f"; an earlier copy is still at {old}, and can be deleted once you "
+            f"are satisfied" if old else "")
+
+
 def _config(cfg: config.Config) -> Check:
     if config.CONFIG_PATH.is_file():
-        return Check("Config", OK, f"{config.CONFIG_PATH} -> {cfg.host}:{cfg.port}")
+        return Check("Config", OK,
+                     f"{config.CONFIG_PATH} -> {cfg.host}:{cfg.port}{_leftover('config')}")
     return Check("Config", WARN,
                  f"none at {config.CONFIG_PATH}; using defaults "
                  f"({cfg.host}:{cfg.port}). Run `rephemeral setup`.")
@@ -71,17 +78,19 @@ def _key(cfg: config.Config) -> Check:
     if not cfg.key.is_file():
         return Check("SSH key", FAIL,
                      f"none at {cfg.key}; run `rephemeral setup`")
-    if os.name == "nt":
+    try:
+        exposed = config.key_exposure(cfg.key)
+    except OSError as exc:
         return Check("SSH key", WARN,
-                     f"{cfg.key} exists. Windows cannot express POSIX mode 600, "
-                     f"so this key may be readable by other accounts on this "
-                     f"machine. Restrict it with ACLs on a shared computer.")
-    mode = stat.S_IMODE(cfg.key.stat().st_mode)
-    if mode & 0o077:
+                     f"{cfg.key} exists, but who can read it could not be "
+                     f"determined ({exc})")
+    if exposed:
         return Check("SSH key", WARN,
-                     f"{cfg.key} is mode {mode:03o}; group or others can read it. "
-                     f"Fix with: chmod 600 {cfg.key}")
-    return Check("SSH key", OK, f"{cfg.key}, mode {mode:03o}")
+                     f"{cfg.key} can be read by {', '.join(exposed)}. Run "
+                     f"`rephemeral setup` to restrict it to {config.PRIVATE_READERS}; "
+                     f"it does that before asking for the password, so pressing "
+                     f"Ctrl+C at the prompt is fine if the key is already installed.")
+    return Check("SSH key", OK, f"{cfg.key}, readable only by {config.PRIVATE_READERS}")
 
 
 def _route(cfg: config.Config) -> Check:
@@ -91,6 +100,13 @@ def _route(cfg: config.Config) -> Check:
     out to ifconfig or ip, neither of which exists everywhere. A UDP
     socket's connect() only sets the peer and picks a route; it sends
     nothing.
+
+    On a machine with a default route, connect() succeeds with the cable
+    out too, by routing through the LAN gateway. So what shows the link is
+    down is the local address the route chose, not whether connect()
+    raised. The tablet's USB address is not reachable any other way, so
+    for that address an off-subnet route is a failure. A host configured
+    elsewhere may legitimately be routed, and only warns.
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -106,6 +122,11 @@ def _route(cfg: config.Config) -> Check:
     network = ipaddress.ip_network(f"{socket.gethostbyname(cfg.host)}/24", strict=False)
     if ipaddress.ip_address(local) in network:
         return Check("USB network", OK, f"local address {local} reaches {cfg.host}")
+    if cfg.host == DEFAULT_HOST:
+        return Check("USB network", FAIL,
+                     f"{cfg.host} would be reached via {local}, which is not the "
+                     f"tablet's USB interface, so that interface is not up. Check "
+                     f"the cable, and that the OS bound a driver to the device.")
     return Check("USB network", WARN,
                  f"{cfg.host} routes via {local}, which is not on the tablet's "
                  f"subnet. Something else may be answering on that address.")
@@ -198,7 +219,8 @@ def run(cfg: config.Config | None = None) -> list[Check]:
                    if store.manifest.record(s.key).stock_sha256)
         checks.append(Check("Backups", OK if have == len(screens.SCREENS) else WARN,
                             f"{have} of {len(screens.SCREENS)} screens backed up "
-                            f"for build {info.build}; host copy at {store.host_dir}"))
+                            f"for build {info.build}; host copy at {store.host_dir}"
+                            f"{_leftover('backups')}"))
     finally:
         device.close()
     return checks

@@ -232,8 +232,10 @@ to two places:
 - On the tablet, under `/home/root/.rephemeral/backups/<firmware-build>/`.
   `/home` is a separate partition, so this survives firmware updates and
   travels with the device to another computer.
-- On your machine, under `~/.local/share/rephemeral/backups/<build>/`, as
-  the fallback for when the tablet has been wiped.
+- On your machine, as the fallback for when the tablet has been wiped:
+  under `~/.local/share/rephemeral/backups/<build>/` on macOS and Linux,
+  and `%LOCALAPPDATA%\rephemeral\backups\<build>\` on Windows.
+  `REPHEMERAL_DATA_DIR` moves it, with backups in its `backups` folder.
 
 Three rules keep the stock art safe:
 
@@ -279,9 +281,21 @@ Run `rephemeral status` after an update. Screens that reverted will read
 
 ## Security
 
-The tool holds one credential: an SSH key it generates, stored at
-`~/.config/rephemeral/id_ed25519` with mode 600. The device root password
-is used once, in memory, to install that key, and is never persisted.
+The tool holds one credential: an SSH key it generates. The device root
+password is used once, in memory, to install that key, and is never
+persisted.
+
+The key is readable only by you:
+
+- On macOS and Linux it is `~/.config/rephemeral/id_ed25519`, mode 600.
+- On Windows it is `%LOCALAPPDATA%\rephemeral\id_ed25519`, with an access
+  control list granting your account and SYSTEM and nobody else, not even
+  Administrators. `chmod` cannot express that on Windows, so the tool sets
+  the ACL itself, before the key's bytes are written.
+
+`REPHEMERAL_CONFIG_DIR` moves the key and configuration. Wherever it goes,
+`rephemeral setup` restricts the key again, and `rephemeral inspector`
+reports anyone else who can read it.
 
 This tool does not touch your reMarkable account. It has no cloud
 credentials and makes no network requests beyond the USB link.
@@ -319,30 +333,27 @@ than assume they carried over. Contributions welcome, particularly with a
 
 Linux and Windows 11 are tested.
 
-The Python side carries no host platform assumptions. There are no
+The Python side carries almost no host platform assumptions. There are no
 `subprocess` calls, host paths are built with `pathlib` rather than
 strung together, device paths use `posixpath` because the tablet is
 always Linux, and every shell command in the codebase runs on the tablet
 rather than on your machine. Nothing needs a POSIX shell locally.
 
-That claim survived Ubuntu and then Windows 11 without a source change to
-the tool. On Windows 11 25H2 the tablet's USB ethernet came up on the
-in-box RNDIS driver with no configuration, and key installation, the
-inspector, `status`, a restore, a write and the web UI all behaved as they
-do elsewhere. The capture is in
+Windows needed two genuine differences, and nothing else:
+
+- **Key permissions.** Windows cannot express mode 600, and a key written
+  that way silently keeps the ACL of its folder. Under `C:\` that means
+  every local account can read it. The tool sets an explicit ACL instead.
+- **File locations.** Configuration and backups live in
+  `%LOCALAPPDATA%\rephemeral` rather than `~\.config` and `~\.local\share`.
+  An install from an earlier version is copied across on first run: each
+  backup is checked against the original, and the old folders are left in
+  place for you to delete. `rephemeral inspector` mentions them for as
+  long as they are there.
+
+On Windows 11 25H2 the tablet's USB ethernet came up on the in-box RNDIS
+driver with nothing but the cable plugged in. The capture is in
 [docs/windows-verification.txt](docs/windows-verification.txt).
-
-What remains before Windows is called supported:
-
-- **Key permissions.** The generated SSH key is written with mode `600`,
-  which Windows cannot express through `chmod`. In practice the key
-  inherits its ACL from the profile directory, which on a default account
-  grants the owner, SYSTEM and Administrators and no other account. The
-  inspector warns rather than reading that ACL, and a `key_path` outside
-  the profile would not inherit it.
-- **Config locations.** `~/.config` and `~/.local/share` are the right
-  homes on Linux, and work on Windows, but `%APPDATA%` is what a Windows
-  user would expect.
 
 If Windows behaves differently for you, an issue saying what happened is
 useful.
