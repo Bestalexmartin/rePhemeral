@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,81 @@ def _store(device: Device) -> tuple[BackupStore, object]:
     return BackupStore(device, build=info.build, board=info.board), info
 
 
+def _masked_input(prompt: str, read_char, write) -> str:
+    """Collect a password a keystroke at a time, echoing an asterisk for each.
+
+    Kept apart from the terminal handling so the key logic can be tested
+    without a terminal. `read_char` returns one character, "" at end of
+    input, or None for a key that produced no character.
+    """
+    write(prompt)
+    chars: list[str] = []
+    while True:
+        ch = read_char()
+        if ch is None:
+            continue
+        if ch in ("\r", "\n"):
+            write("\n")
+            return "".join(chars)
+        if ch == "\x03":
+            write("\n")
+            raise KeyboardInterrupt
+        if ch in ("", "\x04"):
+            write("\n")
+            raise EOFError
+        if ch in ("\x08", "\x7f"):
+            if chars:
+                chars.pop()
+                write("\b \b")
+            continue
+        if ch < " ":
+            continue
+        chars.append(ch)
+        write("*")
+
+
+def _read_password(prompt: str) -> str:
+    """Prompt for a password, echoing an asterisk per keystroke.
+
+    getpass echoes nothing at all, which on a first run reads as a prompt
+    that has stopped taking input. Without an interactive terminal there
+    is nothing to echo to, so that case still goes through getpass.
+    """
+    if not sys.stdin.isatty():
+        return getpass.getpass(prompt)
+
+    def write(text: str) -> None:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+
+    if os.name == "nt":
+        import msvcrt
+
+        def read_char() -> str | None:
+            ch = msvcrt.getwch()
+            if ch in ("\x00", "\xe0"):
+                # Arrow and function keys arrive as a prefix then a key code,
+                # and neither belongs in a password.
+                msvcrt.getwch()
+                return None
+            return ch
+
+        return _masked_input(prompt, read_char, write)
+
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        # cbreak clears ECHO and ICANON, so keys arrive one at a time and
+        # unechoed, while leaving ISIG alone so Ctrl+C still interrupts.
+        tty.setcbreak(fd)
+        return _masked_input(prompt, lambda: sys.stdin.read(1), write)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
 def cmd_setup(args: argparse.Namespace) -> int:
     cfg = config.load()
     cfg.host = args.host or cfg.host
@@ -36,7 +112,11 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print()
     print("The tablet's root password is shown on the device under Settings.")
     print("It is used once, to install the key above, and is never stored.")
-    password = getpass.getpass("Device root password: ")
+    try:
+        password = _read_password("Device root password: ")
+    except (EOFError, KeyboardInterrupt):
+        print("Aborted.", file=sys.stderr)
+        return 1
     if not password:
         print("No password entered; aborted.", file=sys.stderr)
         return 1
