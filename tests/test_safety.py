@@ -77,6 +77,15 @@ def test_private_dir_is_restricted_only_when_created(tmp_path, monkeypatch):
     assert calls == [tmp_path / 'new' / 'rephemeral']
 
 
+def test_created_private_dir_is_readable_only_by_its_owner(tmp_path):
+    path = tmp_path / 'new' / 'rephemeral'
+    config.make_private_dir(path)
+    # A mode on POSIX, an ACL on Windows: either way nobody else can read it.
+    assert config.key_exposure(path) == []
+    if os.name != 'nt':
+        assert path.stat().st_mode & 0o777 == 0o700
+
+
 @pytest.mark.parametrize('failure', ['connect', 'sftp', 'identity'])
 def test_failed_connect_closes_client(monkeypatch, failure):
     client = MagicMock()
