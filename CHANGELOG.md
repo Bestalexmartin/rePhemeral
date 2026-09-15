@@ -8,6 +8,27 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Notes
+
+- 0.8.0 is verified on Ubuntu 24.04.4, kernel 6.17, Python 3.12.3, against a
+  live Paper Pro on build `20260827113527`. Checked there: the inspector with
+  the tablet attached and unplugged, including the route failure this version
+  fixes; `setup` at a terminal, which reuses an existing key and writes no
+  password; a restore of stock captured on macOS, and the image applied back;
+  the refusal to record another machine's image as stock; the web UI, with its
+  host and origin checks, IPv6, the cable watcher, `--reload` and Ctrl+C; and
+  74 tests passing with the tablet both plugged in and unplugged. Nothing
+  needed changing.
+- Configuration and backups keep their `~/.config` and `~/.local/share` homes
+  on Linux and macOS, so the migration added for Windows does nothing there.
+  `XDG_CONFIG_HOME` and `XDG_DATA_HOME` are deliberately not honored:
+  `REPHEMERAL_CONFIG_DIR` and `REPHEMERAL_DATA_DIR` are the overrides.
+- A PNG this tool writes is not byte-identical across operating systems. The
+  same source image applied from macOS and from Linux produces the same pixels
+  and different file hashes, because each platform's Pillow build compresses
+  differently. Drift reporting is unaffected, since the tool records the hash
+  of what it wrote rather than predicting it.
+
 ## [0.8.0] - 2026-09-15
 
 ### Security

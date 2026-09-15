@@ -297,6 +297,10 @@ The key is readable only by you:
 `rephemeral setup` restricts the key again, and `rephemeral inspector`
 reports anyone else who can read it.
 
+`XDG_CONFIG_HOME` and `XDG_DATA_HOME` are deliberately not honored, so
+setting them moves nothing. `REPHEMERAL_CONFIG_DIR` and
+`REPHEMERAL_DATA_DIR` are the two overrides.
+
 This tool does not touch your reMarkable account. It has no cloud
 credentials and makes no network requests beyond the USB link.
 
