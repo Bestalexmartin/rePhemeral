@@ -8,6 +8,8 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-15
+
 ### Security
 
 - On Windows the SSH key was readable by whoever could read its folder.
@@ -449,7 +451,8 @@ First working version.
   effect immediately: `xochitl` reads these PNGs when it needs to draw
   them rather than caching them at startup. No restart step is needed.
 
-[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Bestalexmartin/rePhemeral/compare/v0.5.0...v0.6.0
