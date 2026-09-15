@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,7 +23,11 @@ def test_key_created_private_and_reused(tmp_path):
     path = tmp_path / 'key'
     config.ensure_key(path)
     original = path.read_bytes()
-    assert path.stat().st_mode & 0o777 == 0o600
+    # Windows has no POSIX mode to assert; the key takes its ACL from the
+    # directory it is written into, which the inspector warns about
+    # rather than reads.
+    if os.name != 'nt':
+        assert path.stat().st_mode & 0o777 == 0o600
     config.ensure_key(path)
     assert path.read_bytes() == original
     assert config.public_key_line(path).startswith('ssh-ed25519 ')
@@ -151,6 +156,7 @@ def test_missing_stock_blocks_apply():
     device.write_bytes.assert_not_called()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='runs the tablet-side command in a POSIX shell')
 @pytest.mark.parametrize('other', ['', 'ssh-ed25519 OTHER other-device\n'])
 def test_remove_key_handles_last_key_and_preserves_others(tmp_path, other):
     import shlex

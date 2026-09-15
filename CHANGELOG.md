@@ -8,6 +8,71 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `setup` echoes an asterisk for each character of the root password.
+  It previously echoed nothing, which on a first run reads as a prompt
+  that has stopped taking input. Backspace erases a character, Ctrl+C
+  prints "Aborted." rather than a traceback, and without an interactive
+  terminal the prompt falls back to `getpass`. The asterisks do show the
+  password's length to anyone watching the screen. Used at a real console
+  on Windows; the macOS and Linux path has not yet been run by hand.
+- Windows install steps in the README, and a `PATH` step for all three
+  systems. The macOS and Linux steps now create `~/.local/bin` and say
+  how each system gets it onto the `PATH`: macOS never adds it, and
+  Ubuntu only adds it at login if it already existed. On Windows the
+  venv's `Scripts` folder is appended to the user `PATH`.
+- The Windows 11 inspector and `status` capture, in
+  [docs/windows-verification.txt](docs/windows-verification.txt).
+
+### Fixed
+
+- `setup-hooks.sh` installed the hook into the wrong repository when run
+  from anywhere but the repository root. `git -C "$root" rev-parse
+  --git-path hooks` answers relative to `$root`, while `mkdir` and `ln`
+  resolved that answer against the current directory, so run from inside
+  another clone it put a fail-closed hook there, blocking commits in a
+  repository that had nothing to do with it. It now asks git for an
+  absolute path.
+- Git Bash on Windows copies rather than links, so the installed hook does
+  not follow later edits to `scripts/pre-commit`. The installer now says
+  so when that happens.
+- The hook and its installer give `winget install Gitleaks.Gitleaks`
+  alongside the apt and Homebrew lines.
+- Two tests assumed a POSIX host: one asserted the key's mode 600, and one
+  runs the tablet-side `remove_key` command through `/bin/sh`. The mode
+  assertion now runs only on POSIX, and the shell test skips on Windows.
+- `tests/test_cli.py` failed `ruff check` under ruff 0.16, which reports
+  its `%` formatting as UP031.
+
+### Changed
+
+- Windows 11 is tested rather than assumed. The roadmap narrows to key
+  ACLs and config locations.
+
+### Notes
+
+- The tool needed no source change to run on Windows; the one source
+  change here is the password prompt. Verified on Windows 11 Home 25H2,
+  build 26200.9168, Python 3.12.10, paramiko 5.0.0 and Pillow 12.3.0,
+  against a live Paper Pro on build `20260827113527`.
+- The tablet's USB ethernet came up on Windows' in-box RNDIS driver with
+  no configuration, addressed by the tablet's DHCP server, with a VPN
+  tunnel connected at the same time.
+- Verified: key installation, the inspector (ten checks passing and one
+  warning, for the key's permissions), `status`, and two writes to
+  `poweroff.png`. A restore to stock, then the previous image set back,
+  each through the read-write remount, the atomic rename, the hash
+  verification and the revert to read-only. The re-applied image hashed
+  identically to the one it replaced. Backups captured on other machines
+  synced down with all eleven hashes matching.
+- The web UI served its page and icon, rejected a cross-origin request
+  with 403 and a foreign Host header with 400, and its startup line
+  reached a redirected log.
+- The inspector's key warning is a refusal to judge, not a fault found.
+  The key inherits the profile directory's ACL, which on a default account
+  grants the owner, SYSTEM and Administrators and no other account.
+
 ## [0.6.1] - 2026-09-11
 
 ### Fixed

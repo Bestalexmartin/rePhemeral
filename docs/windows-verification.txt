@@ -1,0 +1,57 @@
+rePhemeral inspector: Windows verification
+captured 2026-09-15T11:35:06-07:00
+
+host:     Microsoft Windows 11 Home 25H2, build 26200.9168
+python:   Python 3.12.10, python.org installer via winget, per-user
+commit:   0987905 on main
+usb link: Ethernet 2 10.11.99.6/27, IBM USB Remote NDIS Network Device
+
+Home paths read ~, standing for %USERPROFILE%: this file is public, and
+the raw capture carries a local username. The interface needed no
+scrubbing. Windows bound its in-box RNDIS driver (6.2.0.127) with no
+configuration, named the interface "Ethernet 2" rather than anything
+derived from its hardware address, and took its address from the
+tablet's DHCP server.
+
+$ rephemeral inspector
+  ok    Python        3.12.10 at ~\Projects\rePhemeral\.venv\Scripts\python.exe
+  ok    Platform      win32, os.name=nt; POSIX file modes do not apply, see the SSH key check
+  ok    Dependencies  paramiko 5.0.0, Pillow 12.3.0
+  ok    Config        ~\.config\rephemeral\rephemeral.toml -> 10.11.99.1:22
+  warn  SSH key       ~\.config\rephemeral\id_ed25519 exists. Windows cannot express POSIX mode 600, so this key may be readable by other accounts on this machine. Restrict it with ACLs on a shared computer.
+  ok    USB network   local address 10.11.99.6 reaches 10.11.99.1
+  ok    Port open     10.11.99.1:22 accepts connections
+  ok    SSH           authenticated as root@10.11.99.1
+  ok    Device        imx8mm-ferrari, build 20260827113527, 38.0 MB free on /
+  ok    Screens       all 11 present at their expected paths
+  ok    Backups       11 of 11 screens backed up for build 20260827113527; host copy at ~\.local\share\rephemeral\backups\20260827113527
+
+No failures, 1 warning(s).
+
+The warning is the inspector declining to judge, not a measured fault.
+The key inherits its ACL from the profile directory, which grants full
+control to the owning account, SYSTEM and Administrators, and to no other
+account:
+
+  ~\.config\rephemeral\id_ed25519  NT AUTHORITY\SYSTEM:(I)(F)
+                                   BUILTIN\Administrators:(I)(F)
+                                   <user>:(I)(F)
+
+$ rephemeral status
+Device    imx8mm-ferrari at 10.11.99.1
+Firmware  build 20260827113527, kernel 6.12.49+git-imx8mm-ferrari-g2418a6dae57b
+Rootfs    38.0 MB free of 521 MB
+Backups   ~\.local\share\rephemeral\backups\20260827113527
+
+screen           state                                         size
+suspended        custom (applied by rePhemeral)                1620x2160
+starting         custom (applied by rePhemeral)                1620x2160
+starting_first   custom (applied by rePhemeral)                1620x2160
+rebooting        custom (applied by rePhemeral)                1620x2160
+poweroff         custom (applied by rePhemeral)                1620x2160
+batteryempty     custom (applied by rePhemeral)                1620x2160
+remotewipe       custom (applied by rePhemeral)                1620x2160
+factory          custom (applied by rePhemeral)                1620x2160
+carousel_1       custom (applied by rePhemeral)                1012x1012
+carousel_2       custom (applied by rePhemeral)                1012x1012
+carousel_3       custom (applied by rePhemeral)                1012x1012

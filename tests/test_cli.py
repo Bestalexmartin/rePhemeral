@@ -47,8 +47,7 @@ def _first_line(reload: bool, timeout: float = 10.0) -> str:
     # An empty list means readline never returned: the line was written
     # into a buffer nobody flushed, which is the regression.
     assert captured, (
-        'no startup line within %gs; stdout was buffered and never flushed'
-        % timeout
+        f'no startup line within {timeout:g}s; stdout was buffered and never flushed'
     )
     return captured[0]
 

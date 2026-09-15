@@ -66,6 +66,8 @@ disagree, rather than guessing.
 
 ## Install
 
+### macOS and Linux
+
 ```bash
 git clone https://github.com/Bestalexmartin/rePhemeral.git
 cd rePhemeral
@@ -73,20 +75,28 @@ python3 -m venv .venv && ./.venv/bin/pip install -e .
 ```
 
 That installs `rephemeral` inside the virtual environment, which is not on
-your `PATH`. Pick one of:
+your `PATH`. To run it from any terminal, link it into `~/.local/bin`.
+Run this from the repository root: it resolves `$PWD`, and from anywhere
+else it will happily create a link that points at nothing.
 
 ```bash
-# Run it from the venv directly, no setup:
-./.venv/bin/rephemeral status
-
-# Or put it on your PATH, if ~/.local/bin is already there.
-# Run this from the repository root: it resolves $PWD, and from anywhere
-# else it will happily create a link that points at nothing.
+mkdir -p ~/.local/bin
 ln -sf "$PWD/.venv/bin/rephemeral" ~/.local/bin/rephemeral
-
-# Or activate the venv for the session:
-source .venv/bin/activate
 ```
+
+`~/.local/bin` is not on the `PATH` everywhere:
+
+- **Ubuntu and Debian** add it from `~/.profile` at login, but only if the
+  directory already existed. If `mkdir` just created it, log out and back
+  in, or run `source ~/.profile`.
+- **macOS** never adds it. With the default zsh, add it once and open a
+  new terminal:
+
+  ```bash
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile
+  ```
+
+In a new terminal, `command -v rephemeral` should print the link.
 
 The symlink works because the console script's shebang is an absolute
 path into the venv. Re-run it if you move the repository or rebuild the
@@ -96,11 +106,64 @@ A dangling symlink reports `rephemeral: command not found`, which reads
 as a `PATH` problem and is not one. `readlink -e ~/.local/bin/rephemeral`
 prints nothing when the link is the thing that is broken.
 
+If you would rather leave your `PATH` alone, run it from the venv as
+`./.venv/bin/rephemeral`, or `source .venv/bin/activate` for the session.
+
 If you intend to commit, install the hooks too:
 
 ```bash
 ./scripts/setup-hooks.sh
 ```
+
+### Windows
+
+In PowerShell, install Python if you do not have it:
+
+```powershell
+winget install Python.Python.3.12
+```
+
+Open a new terminal so the `py` launcher is on your `PATH`, then clone
+somewhere outside OneDrive. Windows often syncs `Documents`, and a synced
+folder uploads the thousands of files a virtual environment holds and can
+lock them mid-install.
+
+```powershell
+cd $HOME
+git clone https://github.com/Bestalexmartin/rePhemeral.git
+cd rePhemeral
+py -3.12 -m venv .venv
+.\.venv\Scripts\pip install -e .
+```
+
+A Windows venv keeps its programs in `.venv\Scripts\` rather than
+`.venv/bin/`. To run `rephemeral` from any terminal, add that folder to
+your user `PATH`. Run this from the repository root, since it resolves
+`$PWD`:
+
+```powershell
+$bin = "$PWD\.venv\Scripts"
+$path = [Environment]::GetEnvironmentVariable('Path', 'User')
+if (($path -split ';') -notcontains $bin) {
+    [Environment]::SetEnvironmentVariable('Path', "$path;$bin", 'User')
+}
+```
+
+Then open a new terminal, where `Get-Command rephemeral` should name the
+venv's `rephemeral.exe`. The folder goes at the end of the `PATH`, so
+`python` and `pip` still resolve to your own installation and only
+`rephemeral` is new. If a new tab still cannot find it, close every
+terminal window and open a fresh one. Re-run it if you move the
+repository.
+
+Activating the venv with `.venv\Scripts\Activate.ps1` instead is blocked
+by PowerShell's default execution policy; the `PATH` route needs no
+policy change.
+
+If you intend to commit, install gitleaks with
+`winget install Gitleaks.Gitleaks` and run `bash scripts/setup-hooks.sh`
+from Git Bash. Git Bash copies the hook rather than linking it, so re-run
+the script whenever `scripts/pre-commit` changes.
 
 ## Use
 
@@ -254,7 +317,7 @@ than assume they carried over. Contributions welcome, particularly with a
 
 ### Windows
 
-Linux is tested; Windows is not.
+Linux and Windows 11 are tested.
 
 The Python side carries no host platform assumptions. There are no
 `subprocess` calls, host paths are built with `pathlib` rather than
@@ -262,23 +325,27 @@ strung together, device paths use `posixpath` because the tablet is
 always Linux, and every shell command in the codebase runs on the tablet
 rather than on your machine. Nothing needs a POSIX shell locally.
 
-That claim survived contact with Ubuntu without a single source change,
-so the remaining doubt is Windows specifically:
+That claim survived Ubuntu and then Windows 11 without a source change to
+the tool. On Windows 11 25H2 the tablet's USB ethernet came up on the
+in-box RNDIS driver with no configuration, and key installation, the
+inspector, `status`, a restore, a write and the web UI all behaved as they
+do elsewhere. The capture is in
+[docs/windows-verification.txt](docs/windows-verification.txt).
 
-- **The USB network interface.** The tablet presents itself as a USB
-  ethernet device and serves DHCP on `10.11.99.1`. Linux brings this up
-  in the kernel with no configuration. Windows generally does too, though
-  it is the part most likely to need attention.
-- **Key permissions.** The generated SSH key is written with mode `600`.
-  Windows cannot express that through `chmod`, so the key would sit
-  readable by other accounts on a shared machine. That wants proper ACL
-  handling before Windows is called supported.
+What remains before Windows is called supported:
+
+- **Key permissions.** The generated SSH key is written with mode `600`,
+  which Windows cannot express through `chmod`. In practice the key
+  inherits its ACL from the profile directory, which on a default account
+  grants the owner, SYSTEM and Administrators and no other account. The
+  inspector warns rather than reading that ACL, and a `key_path` outside
+  the profile would not inherit it.
 - **Config locations.** `~/.config` and `~/.local/share` are the right
   homes on Linux, and work on Windows, but `%APPDATA%` is what a Windows
   user would expect.
 
-If you run it on Windows, an issue saying what happened is useful whether
-it worked or not.
+If Windows behaves differently for you, an issue saying what happened is
+useful.
 
 ### A standalone application
 
@@ -310,6 +377,17 @@ Install the development dependencies and run the checks with:
 ./.venv/bin/ruff check .
 ./.venv/bin/python -m pytest
 ```
+
+On Windows, in PowerShell:
+
+```powershell
+.\.venv\Scripts\pip install -e ".[dev]"
+.\.venv\Scripts\ruff check .
+.\.venv\Scripts\python -m pytest
+```
+
+Two tests skip on Windows, where there is no `/bin/sh` to run a
+tablet-side command in.
 
 The tests use simulated devices and do not write to a connected tablet.
 
