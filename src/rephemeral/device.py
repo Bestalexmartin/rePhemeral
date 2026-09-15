@@ -14,6 +14,7 @@ revert actually took.
 """
 from __future__ import annotations
 
+import base64
 import contextlib
 import hashlib
 import io
@@ -25,6 +26,8 @@ from shlex import quote as _q
 from uuid import uuid4
 
 import paramiko
+
+from . import paths
 
 DEFAULT_HOST = "10.11.99.1"
 DEFAULT_USER = "root"
@@ -48,6 +51,16 @@ class DeviceError(RuntimeError):
 
 class NotAReMarkableError(DeviceError):
     """The host answered, but does not look like a reMarkable."""
+
+
+class HostKeyChangedError(DeviceError):
+    """The host offered a key other than the one recorded for it.
+
+    Raised before any authentication, so neither the private key nor the
+    password reaches whatever answered. A factory reset or enabling
+    developer mode regenerates the tablet's key and produces this
+    legitimately; `rephemeral setup --trust-new-key` records the new one.
+    """
 
 
 class InsufficientSpaceError(DeviceError):
@@ -74,6 +87,12 @@ class DeviceInfo:
         return self.free_bytes / (1024 * 1024)
 
 
+def fingerprint(key: paramiko.PKey) -> str:
+    """The SHA256 fingerprint of a key, as ssh(1) and ssh-keygen print it."""
+    digest = hashlib.sha256(key.asbytes()).digest()
+    return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
+
+
 class Device:
     """A connected tablet. Use as a context manager."""
 
@@ -85,6 +104,7 @@ class Device:
         port: int = DEFAULT_PORT,
         password: str | None = None,
         timeout: float = 10.0,
+        known_hosts: str | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -92,6 +112,10 @@ class Device:
         self.key_path = key_path
         self._password = password
         self.timeout = timeout
+        #: Where the tablet's host key is recorded. Defaulted here rather
+        #: than threaded through every caller, so the CLI, the web app, the
+        #: inspector and `setup` all check the same file.
+        self.known_hosts = known_hosts or str(paths.KNOWN_HOSTS)
         self._client: paramiko.SSHClient | None = None
         self._sftp: paramiko.SFTPClient | None = None
         # Depth counter so nested writable_rootfs() blocks do not remount
@@ -104,12 +128,25 @@ class Device:
         self.close()
         client = paramiko.SSHClient()
         self._client = client
-        # The tablet regenerates its host key on a factory reset, and
-        # developer mode forces one. Rejecting the new key would block the
-        # tool on exactly the workflow it exists to support, so we accept
-        # it. The link is a direct USB cable, not a network path, which is
-        # what makes that acceptable here and would not elsewhere.
+        # The tablet's key is recorded on first contact and compared on
+        # every connection after it. paramiko raises BadHostKeyException on
+        # its own once a key is known and differs, before authenticating,
+        # so the policy below is reached only for a host never seen before,
+        # and AutoAdd is what records it.
+        #
+        # First contact is trusted rather than refused because a factory
+        # reset regenerates the tablet's key and developer mode forces one,
+        # so refusing an unknown key would block the workflow this tool
+        # exists to support, and would break every install made before the
+        # store existed.
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            client.load_host_keys(self.known_hosts)
+        except OSError:
+            # Nothing recorded yet. Setting the filename anyway is what
+            # makes AutoAdd save the key it accepts, and load_host_keys
+            # sets it before it reads.
+            client._host_keys_filename = self.known_hosts
         try:
             client.connect(
                 hostname=self.host,
@@ -127,6 +164,20 @@ class Device:
             self._sftp = client.open_sftp()
             self._sftp.get_channel().settimeout(self.timeout)
             self._assert_is_remarkable()
+        except paramiko.BadHostKeyException as exc:
+            self.close()
+            raise HostKeyChangedError(
+                f"the host at {self.host} offered an SSH host key that is not "
+                f"the one recorded for it.\n"
+                f"  recorded: {fingerprint(exc.expected_key)}\n"
+                f"  offered:  {fingerprint(exc.key)}\n"
+                f"Nothing was sent to it: neither the key at "
+                f"{self.key_path or 'the configured path'} nor a password.\n"
+                f"If you reset the tablet or enabled developer mode, this is "
+                f"expected, and `rephemeral setup --trust-new-key` records the "
+                f"new key. Otherwise something other than your tablet is "
+                f"answering. Recorded keys are in {self.known_hosts}."
+            ) from exc
         except DeviceError:
             self.close()
             raise

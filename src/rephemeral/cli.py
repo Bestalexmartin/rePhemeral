@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import config, inspector, migrate, screens
+from . import config, hostkey, inspector, migrate, screens
 from .apply import Applier
 from .backup import BackupError, BackupStore
 from .device import Device, DeviceError
@@ -19,6 +19,10 @@ def _connect(cfg: config.Config) -> Device:
         raise SystemExit(
             f"No SSH key at {cfg.key}. Run `rephemeral setup` first."
         )
+    # Create the host key store before connecting, so it is private from
+    # the start. Left to paramiko, it would be written on first contact at
+    # whatever the umask allows.
+    hostkey.ensure_store()
     return Device(host=cfg.host, key_path=str(cfg.key),
                   username=cfg.username, port=cfg.port)
 
@@ -107,6 +111,16 @@ def cmd_setup(args: argparse.Namespace) -> int:
     cfg = config.load()
     cfg.host = args.host or cfg.host
     key = config.ensure_key(cfg.key)
+    store = hostkey.ensure_store()
+    if args.trust_new_key:
+        dropped = hostkey.forget(cfg.host, cfg.port)
+        if dropped:
+            print(f"Forgot the host key recorded for {cfg.host} ({dropped}).")
+        else:
+            print(f"No host key was recorded for {cfg.host}; nothing to forget.")
+    # Read before connecting: the connection itself records the key on
+    # first contact, so afterwards there is no telling which run did it.
+    known = hostkey.recorded_fingerprint(cfg.host, cfg.port)
     print(f"Keypair: {key}")
     print(f"Public:  {config.public_key_line(key)}")
     print()
@@ -134,6 +148,15 @@ def cmd_setup(args: argparse.Namespace) -> int:
     with _connect(cfg) as d:
         info = d.info()
         print(f"Connected to {info.board}, firmware build {info.build}")
+    now = hostkey.recorded_fingerprint(cfg.host, cfg.port)
+    if now and known is None:
+        print(f"Recorded the tablet's host key in {store}:")
+        print(f"  {now}")
+        print("From now on a different key stops the tool rather than "
+              "connecting. After a factory reset, or after enabling developer "
+              "mode, run `rephemeral setup --trust-new-key`.")
+    elif now:
+        print(f"Host key unchanged: {now}")
     return 0
 
 
@@ -311,6 +334,10 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("setup", help="generate a key and install it on the tablet")
     s.add_argument("--host", default=None)
+    s.add_argument("--trust-new-key", action="store_true",
+                   help="record the host key the tablet offers now, in place of "
+                        "the one on file. A factory reset regenerates the "
+                        "tablet's key, and so does enabling developer mode.")
     s.set_defaults(func=cmd_setup)
 
     s = sub.add_parser("status", help="show the device and what is on each screen")

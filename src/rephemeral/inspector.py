@@ -93,6 +93,22 @@ def _key(cfg: config.Config) -> Check:
     return Check("SSH key", OK, f"{cfg.key}, readable only by {config.PRIVATE_READERS}")
 
 
+def _host_key(cfg: config.Config) -> Check:
+    """Whether the tablet's SSH host key has been recorded.
+
+    Reads the store and never connects, so it cannot tell a matching key
+    from a changed one. A changed key is what the SSH check reports, since
+    that is where the connection is refused.
+    """
+    from . import hostkey
+    recorded = hostkey.recorded_fingerprint(cfg.host, cfg.port)
+    if recorded is None:
+        return Check("Host key", OK,
+                     f"none recorded for {cfg.host} yet; the next connection "
+                     f"records the key it offers, in {hostkey.STORE_PATH}")
+    return Check("Host key", OK, f"{cfg.host} recorded as {recorded}")
+
+
 def _route(cfg: config.Config) -> Check:
     """Which local address the OS would use to reach the tablet.
 
@@ -147,9 +163,13 @@ def _tcp(cfg: config.Config) -> Check:
 
 def _ssh(cfg: config.Config) -> tuple[Check, object | None]:
     """Authenticate and identify the device. Returns the open Device, or None."""
+    from . import hostkey
     from .device import Device, DeviceError, NotAReMarkableError
     if not cfg.key.is_file():
         return Check("SSH", SKIP, "no key to authenticate with"), None
+    # Private from the start, rather than however paramiko would write it
+    # when it records the key on first contact.
+    hostkey.ensure_store()
     d = Device(host=cfg.host, key_path=str(cfg.key), username=cfg.username,
                port=cfg.port, timeout=8.0)
     try:
@@ -167,7 +187,8 @@ def _ssh(cfg: config.Config) -> tuple[Check, object | None]:
 
 def run(cfg: config.Config | None = None) -> list[Check]:
     cfg = cfg or config.load()
-    checks = [_python(), _platform(), _deps(), _config(cfg), _key(cfg)]
+    checks = [_python(), _platform(), _deps(), _config(cfg), _key(cfg),
+              _host_key(cfg)]
 
     route = _route(cfg)
     checks.append(route)

@@ -301,6 +301,23 @@ reports anyone else who can read it.
 setting them moves nothing. `REPHEMERAL_CONFIG_DIR` and
 `REPHEMERAL_DATA_DIR` are the two overrides.
 
+The tablet is checked in return. Its SSH host key is recorded the first
+time the tool connects, in `known_hosts` beside the key, and from then on
+a host offering a different key stops the tool rather than being trusted
+with your key or your password. `rephemeral inspector` shows which key is
+recorded.
+
+A factory reset regenerates the tablet's host key, and so does enabling
+developer mode, so seeing this after either is expected rather than
+alarming:
+
+```bash
+rephemeral setup --trust-new-key
+```
+
+That is the only thing that replaces a recorded key. If you have not reset
+anything, it means something other than your tablet answered.
+
 This tool does not touch your reMarkable account. It has no cloud
 credentials and makes no network requests beyond the USB link.
 

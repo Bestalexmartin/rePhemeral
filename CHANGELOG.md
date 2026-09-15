@@ -8,6 +8,32 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Security
+
+- The tablet's SSH host key is recorded the first time the tool connects,
+  and a different key stops every command afterwards. Until now no
+  known-hosts file was loaded at all, so every key was an unknown key and
+  the client's policy accepted it: anything answering at the configured
+  address was taken to be the tablet. Two things followed from that.
+  `rephemeral setup` sent the root password to whatever answered, since
+  authentication happens before the tool checks that the host is a
+  reMarkable. And on an ordinary command the backup store trusts the
+  manifest the device serves, so a host pretending to be the tablet could
+  overwrite this machine's copies of the stock artwork, which is the one
+  irreplaceable thing here. Reaching either needed something other than
+  the tablet answering on `10.11.99.1`, which is remote over a USB cable
+  and real on a network where that address routes somewhere else.
+- A changed key is refused before authentication, so neither the key nor
+  the password reaches the host, and the message names the recorded and
+  offered fingerprints. A factory reset regenerates the tablet's key and
+  enabling developer mode forces one, which is the expected way to see
+  this: `rephemeral setup --trust-new-key` records the new key. First
+  contact is still trusted, which is what keeps existing installs working
+  and matches how the tool is set up in the first place.
+- The store is `known_hosts`, beside the configuration and the private
+  key, so `REPHEMERAL_CONFIG_DIR` moves all three. It is created private,
+  and `rephemeral inspector` reports which key is recorded.
+
 ### Notes
 
 - 0.8.0 is verified on Ubuntu 24.04.4, kernel 6.17, Python 3.12.3, against a

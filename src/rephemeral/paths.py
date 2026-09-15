@@ -50,3 +50,9 @@ def default_dirs(
 
 CONFIG_DIR, DATA_DIR = default_dirs()
 BACKUP_DIR = DATA_DIR / "backups"
+
+#: The tablet's recorded SSH host key. It lives beside the configuration and
+#: the private key so one override moves all three, and it is named here
+#: rather than in hostkey.py because device.py needs it too and cannot
+#: import that module: hostkey imports config, and config imports device.
+KNOWN_HOSTS = CONFIG_DIR / "known_hosts"

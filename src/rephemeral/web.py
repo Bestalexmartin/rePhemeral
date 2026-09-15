@@ -87,12 +87,16 @@ for error_type in (DeviceError, SSHException, OSError, ImageError, BackupError):
 
 
 def _device() -> Device:
+    from . import hostkey
     cfg = config.load()
     if not cfg.key.is_file():
         raise HTTPException(
             status_code=503,
             detail=f"No SSH key at {cfg.key}. Run `rephemeral setup` first.",
         )
+    # Private from the start, rather than however paramiko would write it
+    # when it records the key on first contact.
+    hostkey.ensure_store()
     d = Device(host=cfg.host, key_path=str(cfg.key),
                username=cfg.username, port=cfg.port)
     try:
