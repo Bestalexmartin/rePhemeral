@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import paramiko
 import pytest
 
-from rephemeral import config, device, hostkey, paths
+from rephemeral import cli, config, device, hostkey, paths
 
 HOST = '10.11.99.1'
 
@@ -135,6 +135,95 @@ def test_a_changed_key_refuses_and_names_both_fingerprints(client, store, keys):
     client.close.assert_called_once()
     assert d._client is None
     assert d._password is None
+
+
+def test_record_replaces_whatever_is_there(store, keys):
+    first, second = keys
+    assert hostkey.record(HOST, first, path=store) == device.fingerprint(first)
+    assert hostkey.recorded_fingerprint(HOST, path=store) == device.fingerprint(first)
+    # Replacing rather than appending: a host has one key, not a pile.
+    assert hostkey.record(HOST, second, path=store) == device.fingerprint(second)
+    assert hostkey.recorded_fingerprint(HOST, path=store) == device.fingerprint(second)
+    assert len(store.read_text().strip().splitlines()) == 1
+    assert config.key_exposure(store) == []
+
+
+@pytest.fixture
+def setup_run(tmp_path, monkeypatch):
+    """`rephemeral setup` with its store redirected and the tablet replaced.
+
+    Returns a callable taking the password behaviour, so each test drives
+    the prompt the way it needs: a string, or an exception to raise.
+    """
+    store = tmp_path / 'known_hosts'
+    monkeypatch.setattr(hostkey, 'STORE_PATH', store)
+    # cmd_setup ends with cfg.save(), which writes to config.CONFIG_PATH.
+    # Without this the test rewrites the real ~/.config/rephemeral, pointing
+    # it at a pytest temporary directory that is deleted afterwards. It did
+    # exactly that once; a test that can damage the machine it runs on is a
+    # defect in the test.
+    monkeypatch.setattr(config, 'CONFIG_PATH', tmp_path / 'rephemeral.toml')
+    monkeypatch.setattr(cli.config, 'load', lambda: config.Config(
+        key_path=str(config.ensure_key(tmp_path / 'id_ed25519'))))
+    monkeypatch.setattr(cli.config, 'ensure_key', lambda path=None: tmp_path / 'id_ed25519')
+    monkeypatch.setattr(cli.config, 'public_key_line', lambda path=None: 'ssh-ed25519 AAAA x')
+    monkeypatch.setattr(cli.migrate, 'run', lambda: cli.migrate.Report())
+
+    def run(password, install=None):
+        def prompt(_):
+            if isinstance(password, BaseException):
+                raise password
+            return password
+        monkeypatch.setattr(cli, '_read_password', prompt)
+        monkeypatch.setattr(cli.config, 'install_key', install or (lambda *a, **k: None))
+        monkeypatch.setattr(cli, '_connect', MagicMock())
+        return cli.main(['setup', '--trust-new-key'])
+
+    return store, run
+
+
+def test_setup_keeps_the_pin_when_the_prompt_reads_nothing(setup_run, keys, capsys):
+    # The failure that prompted this: --trust-new-key forgot the key first,
+    # so a prompt that never read left the tablet un-pinned and silent.
+    store, run = setup_run
+    hostkey.record(HOST, keys[0], path=store)
+
+    assert run(EOFError()) == 1
+
+    assert hostkey.recorded_fingerprint(HOST, path=store) == device.fingerprint(keys[0])
+    err = capsys.readouterr().err
+    assert 'no input' in err.lower()
+    assert 'Aborted.' not in err          # not the same event as Ctrl+C
+
+
+def test_setup_says_aborted_only_when_interrupted(setup_run, capsys):
+    _, run = setup_run
+    assert run(KeyboardInterrupt()) == 1
+    assert 'Aborted.' in capsys.readouterr().err
+
+
+def test_setup_puts_the_old_key_back_when_installing_fails(setup_run, keys, capsys):
+    store, run = setup_run
+    hostkey.record(HOST, keys[0], path=store)
+
+    def explode(*args, **kwargs):
+        raise RuntimeError('wrong password')
+
+    assert run('hunter2', install=explode) == 1
+    assert hostkey.recorded_fingerprint(HOST, path=store) == device.fingerprint(keys[0])
+    assert 'put back' in capsys.readouterr().err.lower()
+
+
+def test_setup_forgets_once_the_password_is_in_hand(setup_run, keys, capsys):
+    store, run = setup_run
+    hostkey.record(HOST, keys[0], path=store)
+
+    assert run('hunter2') == 0
+
+    # Forgotten for real: the connection is mocked here, so nothing records
+    # a replacement, which is exactly what makes the forget visible.
+    assert hostkey.recorded(HOST, path=store) is None
+    assert 'Forgot the host key' in capsys.readouterr().out
 
 
 def test_a_changed_key_is_a_device_error(client, store, keys):

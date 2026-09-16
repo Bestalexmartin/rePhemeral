@@ -35,7 +35,7 @@ STORE_PATH = paths.KNOWN_HOSTS
 #: Re-exported so callers have one place to ask about host keys, while the
 #: refusal message in device.py uses the same form.
 __all__ = ["STORE_PATH", "ensure_store", "entry_name", "fingerprint", "forget",
-           "recorded", "recorded_fingerprint"]
+           "record", "recorded", "recorded_fingerprint"]
 
 
 def entry_name(host: str, port: int = paramiko.config.SSH_PORT) -> str:
@@ -88,6 +88,27 @@ def recorded_fingerprint(host: str, port: int = paramiko.config.SSH_PORT,
                          path: Path | None = None) -> str | None:
     key = recorded(host, port, path)
     return fingerprint(key) if key is not None else None
+
+
+def record(host: str, key: paramiko.PKey,
+           port: int = paramiko.config.SSH_PORT,
+           path: Path | None = None) -> str:
+    """Record a key for this host, replacing whatever it has. Returns the
+    fingerprint recorded.
+
+    Connecting is what normally records a key. This exists so a failed
+    re-trust can put the previous one back, rather than leaving the tablet
+    un-pinned because `setup` stopped somewhere in the middle.
+    """
+    target = ensure_store(path)
+    keys = _keys(target)
+    name = entry_name(host, port)
+    if keys.lookup(name):
+        del keys[name]
+    keys.add(name, key.get_name(), key)
+    keys.save(str(target))
+    config.restrict_private(target)
+    return fingerprint(key)
 
 
 def forget(host: str, port: int = paramiko.config.SSH_PORT,

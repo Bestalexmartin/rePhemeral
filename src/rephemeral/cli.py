@@ -112,15 +112,13 @@ def cmd_setup(args: argparse.Namespace) -> int:
     cfg.host = args.host or cfg.host
     key = config.ensure_key(cfg.key)
     store = hostkey.ensure_store()
-    if args.trust_new_key:
-        dropped = hostkey.forget(cfg.host, cfg.port)
-        if dropped:
-            print(f"Forgot the host key recorded for {cfg.host} ({dropped}).")
-        else:
-            print(f"No host key was recorded for {cfg.host}; nothing to forget.")
-    # Read before connecting: the connection itself records the key on
-    # first contact, so afterwards there is no telling which run did it.
-    known = hostkey.recorded_fingerprint(cfg.host, cfg.port)
+    # Read before connecting: the connection records the key on first
+    # contact, so afterwards there is no telling which run did it.
+    known = hostkey.recorded(cfg.host, cfg.port)
+    known_fp = hostkey.fingerprint(known) if known is not None else None
+    if args.trust_new_key and known is None:
+        print(f"No host key is recorded for {cfg.host}; the next connection "
+              f"records whatever it offers.")
     print(f"Keypair: {key}")
     print(f"Public:  {config.public_key_line(key)}")
     print()
@@ -128,16 +126,33 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print("It is used once, to install the key above, and is never stored.")
     try:
         password = _read_password("Device root password: ")
-    except (EOFError, KeyboardInterrupt):
+    except KeyboardInterrupt:
         print("Aborted.", file=sys.stderr)
+        return 1
+    except EOFError:
+        # Not the same as someone pressing Ctrl+C: the terminal gave this
+        # process no input at all, which is worth saying rather than
+        # reporting as a deliberate abort.
+        print("No password could be read: this terminal provided no input. "
+              "Nothing has been changed.", file=sys.stderr)
         return 1
     if not password:
         print("No password entered; aborted.", file=sys.stderr)
         return 1
+    # Forget only now, with a password in hand. Forgetting earlier meant
+    # that anything failing in between, including a prompt that never got
+    # to read, left the tablet un-pinned without saying so.
+    if args.trust_new_key and known is not None:
+        hostkey.forget(cfg.host, cfg.port)
+        print(f"Forgot the host key recorded for {cfg.host} ({known_fp}).")
     try:
         config.install_key(password, host=cfg.host, username=cfg.username,
                            port=cfg.port, key_path=cfg.key)
     except Exception as exc:
+        if args.trust_new_key and known is not None:
+            hostkey.record(cfg.host, known, cfg.port)
+            print(f"Setup failed, so the host key recorded before it "
+                  f"({known_fp}) has been put back.", file=sys.stderr)
         print(f"Could not install the key: {exc}", file=sys.stderr)
         return 1
     finally:
@@ -149,12 +164,16 @@ def cmd_setup(args: argparse.Namespace) -> int:
         info = d.info()
         print(f"Connected to {info.board}, firmware build {info.build}")
     now = hostkey.recorded_fingerprint(cfg.host, cfg.port)
-    if now and known is None:
+    if now and now != known_fp:
         print(f"Recorded the tablet's host key in {store}:")
         print(f"  {now}")
         print("From now on a different key stops the tool rather than "
               "connecting. After a factory reset, or after enabling developer "
               "mode, run `rephemeral setup --trust-new-key`.")
+    elif now and args.trust_new_key:
+        # Re-trusted, and the tablet offered what it offered before. Worth
+        # saying plainly, since the run began by forgetting a key.
+        print(f"Recorded the same host key again: {now}")
     elif now:
         print(f"Host key unchanged: {now}")
     return 0
