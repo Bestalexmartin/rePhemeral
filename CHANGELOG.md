@@ -8,7 +8,26 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `rephemeral trust-key` records the host key the tablet offers now, and
+  shows the old and new fingerprints. It asks for no password: a host key
+  is exchanged before anything authenticates, so reading it sends neither
+  the root password nor the tool's own key. Until now the only way back
+  from a re-keyed tablet was `setup --trust-new-key`, which reinstalls the
+  keypair and therefore asks for the root password, even when the key it
+  installs is already on the device. That remains the right route after a
+  factory reset, which erases the key.
+
 ### Security
+
+- `rephemeral setup` compares the offered host key against the recorded
+  one **before** prompting for the password, and stops there if they
+  differ. Previously the prompt came first and the refusal came after it,
+  which was safe, since the key exchange precedes authentication and no
+  password was ever transmitted, but it asked people to type a secret the
+  tool was about to refuse to use. An unreachable tablet is not treated as
+  a mismatch: the connection reports that in its own words.
 
 - `rephemeral setup` restricts its own configuration folder, and
   `rephemeral inspector` warns when anyone else can write to it, naming

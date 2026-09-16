@@ -19,6 +19,7 @@ import contextlib
 import hashlib
 import io
 import posixpath
+import socket
 import stat as statmod
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -91,6 +92,42 @@ def fingerprint(key: paramiko.PKey) -> str:
     """The SHA256 fingerprint of a key, as ssh(1) and ssh-keygen print it."""
     digest = hashlib.sha256(key.asbytes()).digest()
     return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
+
+
+def offered_host_key(host: str, port: int = DEFAULT_PORT,
+                     timeout: float = 10.0) -> paramiko.PKey:
+    """The host key the server at host:port presents, read without logging in.
+
+    SSH exchanges host keys before authentication, so this sends no
+    credentials: not the root password, and not the tool's private key.
+
+    Two things need it. Trusting a re-keyed tablet should not require
+    reinstalling anything, and `setup` should be able to compare a
+    recorded key against the offered one before asking anyone to type a
+    password.
+    """
+    sock = transport = None
+    try:
+        # Connect through our own socket. Transport((host, port)) does the
+        # connect itself with no timeout, so an address that does not answer
+        # hangs for as long as the OS allows: over a minute on macOS. That
+        # would stall `setup` before its prompt every time the cable is out.
+        sock = socket.create_connection((host, port), timeout)
+        transport = paramiko.Transport(sock)
+        transport.banner_timeout = timeout
+        transport.start_client(timeout=timeout)
+        return transport.get_remote_server_key()
+    except Exception as exc:
+        raise DeviceError(
+            f"could not read the host key from {host}:{port}: {exc}"
+        ) from exc
+    finally:
+        # Transport takes ownership of the socket, so only close it here
+        # when no Transport was built around it.
+        if transport is not None:
+            transport.close()
+        elif sock is not None:
+            sock.close()
 
 
 class Device:

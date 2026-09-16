@@ -128,6 +128,27 @@ def cmd_setup(args: argparse.Namespace) -> int:
     if args.trust_new_key and known is None:
         print(f"No host key is recorded for {cfg.host}; the next connection "
               f"records whatever it offers.")
+    # Compare the offered key before anyone types anything. The key
+    # exchange happens before authentication, so this sends nothing, and a
+    # mismatch stops setup at the door rather than after the prompt.
+    # Unreachable is not a refusal: the connection later says so in its own
+    # words, and refusing here would turn "the cable is out" into an alarm.
+    if known is not None and not args.trust_new_key:
+        try:
+            offered_fp = hostkey.fingerprint(hostkey.offered(cfg.host, cfg.port,
+                                                             timeout=8.0))
+        except DeviceError:
+            offered_fp = None
+        if offered_fp is not None and offered_fp != known_fp:
+            print(f"The host at {cfg.host} offers an SSH host key that is not "
+                  f"the one recorded for it.\n"
+                  f"  recorded: {known_fp}\n"
+                  f"  offered:  {offered_fp}\n"
+                  f"Nothing was sent to it, and you were not asked for a "
+                  f"password. If you reset the tablet or enabled developer "
+                  f"mode, `rephemeral trust-key` records the new key.",
+                  file=sys.stderr)
+            return 1
     print(f"Keypair: {key}")
     print(f"Public:  {config.public_key_line(key)}")
     print()
@@ -185,6 +206,43 @@ def cmd_setup(args: argparse.Namespace) -> int:
         print(f"Recorded the same host key again: {now}")
     elif now:
         print(f"Host key unchanged: {now}")
+    return 0
+
+
+def cmd_trust_key(args: argparse.Namespace) -> int:
+    """Record the host key the tablet offers now, without a password.
+
+    A factory reset regenerates the tablet's key and developer mode forces
+    one. Before this, the only way back was `setup --trust-new-key`, which
+    reinstalls the keypair and so asks for the root password, even though
+    the key it installs is already there.
+    """
+    cfg = config.load()
+    cfg.host = args.host or cfg.host
+    store = hostkey.ensure_store()
+    known = hostkey.recorded(cfg.host, cfg.port)
+    known_fp = hostkey.fingerprint(known) if known is not None else None
+    try:
+        offered = hostkey.offered(cfg.host, cfg.port, timeout=8.0)
+    except DeviceError as exc:
+        print(f"{exc}", file=sys.stderr)
+        print("Nothing was changed.", file=sys.stderr)
+        return 1
+    offered_fp = hostkey.fingerprint(offered)
+    if offered_fp == known_fp:
+        print(f"{cfg.host} offers the key already recorded: {offered_fp}")
+        print("Nothing to do.")
+        return 0
+    hostkey.record(cfg.host, offered, cfg.port)
+    if known_fp is None:
+        print(f"Recorded the host key for {cfg.host} in {store}:")
+        print(f"  {offered_fp}")
+    else:
+        print(f"Replaced the host key recorded for {cfg.host} in {store}:")
+        print(f"  was: {known_fp}")
+        print(f"  now: {offered_fp}")
+        print("If you did not reset the tablet or enable developer mode, "
+              "something else is answering at that address.")
     return 0
 
 
@@ -367,6 +425,11 @@ def main(argv: list[str] | None = None) -> int:
                         "the one on file. A factory reset regenerates the "
                         "tablet's key, and so does enabling developer mode.")
     s.set_defaults(func=cmd_setup)
+
+    s = sub.add_parser("trust-key",
+                       help="record the host key the tablet offers now")
+    s.add_argument("--host", default=None)
+    s.set_defaults(func=cmd_trust_key)
 
     s = sub.add_parser("status", help="show the device and what is on each screen")
     s.set_defaults(func=cmd_status)

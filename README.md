@@ -312,11 +312,17 @@ developer mode, so seeing this after either is expected rather than
 alarming:
 
 ```bash
-rephemeral setup --trust-new-key
+rephemeral trust-key
 ```
 
-That is the only thing that replaces a recorded key. If you have not reset
-anything, it means something other than your tablet answered.
+That reads the key the tablet offers now and records it, showing you the
+old and new fingerprints. It needs no password, because a host key is
+exchanged before anything logs in. `rephemeral setup --trust-new-key` does
+the same thing as part of a full setup, which is what you want after a
+factory reset, since the keypair has to be installed again anyway.
+
+Nothing else replaces a recorded key. If you have not reset anything, it
+means something other than your tablet answered.
 
 This tool does not touch your reMarkable account. It has no cloud
 credentials and makes no network requests beyond the USB link.

@@ -35,7 +35,7 @@ STORE_PATH = paths.KNOWN_HOSTS
 #: Re-exported so callers have one place to ask about host keys, while the
 #: refusal message in device.py uses the same form.
 __all__ = ["STORE_PATH", "ensure_store", "entry_name", "fingerprint", "forget",
-           "record", "recorded", "recorded_fingerprint"]
+           "offered", "record", "recorded", "recorded_fingerprint"]
 
 
 def entry_name(host: str, port: int = paramiko.config.SSH_PORT) -> str:
@@ -88,6 +88,18 @@ def recorded_fingerprint(host: str, port: int = paramiko.config.SSH_PORT,
                          path: Path | None = None) -> str | None:
     key = recorded(host, port, path)
     return fingerprint(key) if key is not None else None
+
+
+def offered(host: str, port: int = paramiko.config.SSH_PORT,
+            timeout: float = 10.0) -> paramiko.PKey:
+    """The key the host offers now, read without logging in.
+
+    The public face of device.offered_host_key, so callers asking about
+    host keys have one module to ask. Sends no credentials, because the
+    key exchange happens before authentication.
+    """
+    from .device import offered_host_key
+    return offered_host_key(host, port, timeout)
 
 
 def record(host: str, key: paramiko.PKey,
