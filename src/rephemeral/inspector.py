@@ -66,12 +66,25 @@ def _leftover(kind: str) -> str:
 
 
 def _config(cfg: config.Config) -> Check:
-    if config.CONFIG_PATH.is_file():
-        return Check("Config", OK,
-                     f"{config.CONFIG_PATH} -> {cfg.host}:{cfg.port}{_leftover('config')}")
-    return Check("Config", WARN,
-                 f"none at {config.CONFIG_PATH}; using defaults "
-                 f"({cfg.host}:{cfg.port}). Run `rephemeral setup`.")
+    if not config.CONFIG_PATH.is_file():
+        return Check("Config", WARN,
+                     f"none at {config.CONFIG_PATH}; using defaults "
+                     f"({cfg.host}:{cfg.port}). Run `rephemeral setup`.")
+    try:
+        writable = config.dir_exposure(config.CONFIG_DIR)
+    except OSError:
+        writable = []
+    if writable:
+        # The key inside can be private while the folder is not, and
+        # whoever can write here can replace the key rather than read it.
+        return Check("Config", WARN,
+                     f"{config.CONFIG_PATH} -> {cfg.host}:{cfg.port}; "
+                     f"{config.CONFIG_DIR} can be written by "
+                     f"{', '.join(writable)}, who could replace the key or "
+                     f"this file. `rephemeral setup` restricts "
+                     f"it{_leftover('config')}")
+    return Check("Config", OK,
+                 f"{config.CONFIG_PATH} -> {cfg.host}:{cfg.port}{_leftover('config')}")
 
 
 def _key(cfg: config.Config) -> Check:

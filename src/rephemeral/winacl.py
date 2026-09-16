@@ -34,6 +34,13 @@ _INHERIT_ONLY_ACE = 0x08
 # An allow entry carrying any of these lets its principal read the file:
 # FILE_READ_DATA, GENERIC_READ, GENERIC_ALL.
 _READ_MASK = 0x00000001 | 0x80000000 | 0x10000000
+# And any of these lets it write: FILE_WRITE_DATA, which for a directory is
+# FILE_ADD_FILE, FILE_APPEND_DATA, which is FILE_ADD_SUBDIRECTORY, DELETE,
+# FILE_DELETE_CHILD, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE and GENERIC_ALL.
+# Replacing a key needs only the right to add a file over it, so the delete
+# and ownership rights count too.
+_WRITE_MASK = (0x00000002 | 0x00000004 | 0x00010000 | 0x00000040
+               | 0x00040000 | 0x00080000 | 0x40000000 | 0x10000000)
 
 _advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -204,6 +211,20 @@ def other_readers(path: Path) -> list[tuple[str, str]]:
     this can over-report but never under-report, which is the right way
     round for a warning about a private key.
     """
+    return _others_with(path, _READ_MASK)
+
+
+def other_writers(path: Path) -> list[tuple[str, str]]:
+    """Principals other than the current user and SYSTEM that can write path.
+
+    For a directory this is what matters: someone who can write into the
+    folder can replace the key they cannot read, and the configuration
+    beside it. Over-reports rather than under-reports, as above.
+    """
+    return _others_with(path, _WRITE_MASK)
+
+
+def _others_with(path: Path, mask: int) -> list[tuple[str, str]]:
     owner, dacl, descriptor = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
     code = _advapi32.GetNamedSecurityInfoW(
         str(path), _SE_FILE_OBJECT,
@@ -230,7 +251,7 @@ def other_readers(path: Path) -> list[tuple[str, str]]:
             entry = _ACE.from_address(ace.value)
             if (entry.AceType != _ACCESS_ALLOWED_ACE_TYPE
                     or entry.AceFlags & _INHERIT_ONLY_ACE
-                    or not entry.Mask & _READ_MASK):
+                    or not entry.Mask & mask):
                 continue
             sid_address = ace.value + _ACE.SidStart.offset
             sid = _sid_string(sid_address)

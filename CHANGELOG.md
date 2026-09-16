@@ -8,6 +8,18 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Security
+
+- `rephemeral setup` restricts its own configuration folder, and
+  `rephemeral inspector` warns when anyone else can write to it, naming
+  them. The key inside has always been private, but a folder others can
+  write to lets them replace that key, and the configuration beside it
+  that says which host to hand it to, without ever reading either.
+  Installs made before the tool created its own folder have exactly that
+  shape: a group-writable folder holding a private key. A folder chosen
+  with `REPHEMERAL_CONFIG_DIR` is reported but never restricted, since it
+  may be shared deliberately.
+
 ## [0.9.0] - 2026-09-15
 
 ### Security

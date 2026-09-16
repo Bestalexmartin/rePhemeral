@@ -163,6 +163,10 @@ def setup_run(tmp_path, monkeypatch):
     # exactly that once; a test that can damage the machine it runs on is a
     # defect in the test.
     monkeypatch.setattr(config, 'CONFIG_PATH', tmp_path / 'rephemeral.toml')
+    # And cmd_setup now restricts config.CONFIG_DIR when no override is set,
+    # so without this the suite would chmod the real folder on any machine
+    # whose own folder is group-writable. Same lesson as the line above.
+    monkeypatch.setattr(config, 'CONFIG_DIR', tmp_path)
     monkeypatch.setattr(cli.config, 'load', lambda: config.Config(
         key_path=str(config.ensure_key(tmp_path / 'id_ed25519'))))
     monkeypatch.setattr(cli.config, 'ensure_key', lambda path=None: tmp_path / 'id_ed25519')
@@ -224,6 +228,36 @@ def test_setup_forgets_once_the_password_is_in_hand(setup_run, keys, capsys):
     # a replacement, which is exactly what makes the forget visible.
     assert hostkey.recorded(HOST, path=store) is None
     assert 'Forgot the host key' in capsys.readouterr().out
+
+
+def test_setup_restricts_its_own_config_folder(setup_run, tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv('REPHEMERAL_CONFIG_DIR', raising=False)
+    _, run = setup_run
+    if os.name == 'nt':
+        from rephemeral import winacl
+        winacl.set_dacl(tmp_path, f'D:P(A;;FA;;;{winacl.current_user_sid()})(A;;FA;;;BU)')
+    else:
+        tmp_path.chmod(0o775)
+
+    assert run('hunter2') == 0
+
+    assert config.dir_exposure(tmp_path) == []
+    assert 'Restricted' in capsys.readouterr().out
+
+
+def test_setup_leaves_an_overridden_config_folder_alone(setup_run, tmp_path,
+                                                        monkeypatch, capsys):
+    # A folder someone pointed REPHEMERAL_CONFIG_DIR at may be shared on
+    # purpose, so setup reports nothing and changes nothing there.
+    monkeypatch.setenv('REPHEMERAL_CONFIG_DIR', str(tmp_path))
+    _, run = setup_run
+    if os.name != 'nt':
+        tmp_path.chmod(0o775)
+
+        assert run('hunter2') == 0
+
+        assert tmp_path.stat().st_mode & 0o777 == 0o775
+        assert 'Restricted' not in capsys.readouterr().out
 
 
 def test_a_changed_key_is_a_device_error(client, store, keys):

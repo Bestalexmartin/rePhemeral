@@ -111,6 +111,15 @@ def cmd_setup(args: argparse.Namespace) -> int:
     cfg = config.load()
     cfg.host = args.host or cfg.host
     key = config.ensure_key(cfg.key)
+    # Only the tool's own location. A directory chosen with
+    # REPHEMERAL_CONFIG_DIR may be shared on purpose, and locking someone
+    # else out of it is not setup's business.
+    if not os.environ.get("REPHEMERAL_CONFIG_DIR"):
+        widened = config.restrict_existing_dir(config.CONFIG_DIR)
+        if widened:
+            print(f"Restricted {config.CONFIG_DIR}, which could be written by "
+                  f"{', '.join(widened)}. They could have replaced the key "
+                  f"without ever reading it.")
     store = hostkey.ensure_store()
     # Read before connecting: the connection records the key on first
     # contact, so afterwards there is no telling which run did it.

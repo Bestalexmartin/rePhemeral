@@ -77,6 +77,44 @@ def test_private_dir_is_restricted_only_when_created(tmp_path, monkeypatch):
     assert calls == [tmp_path / 'new' / 'rephemeral']
 
 
+def test_a_folder_others_can_write_to_is_reported(tmp_path):
+    # A 600 key inside a 775 folder is not private: nobody else can read
+    # the key, but they can put a different one in its place.
+    path = tmp_path / 'rephemeral'
+    config.make_private_dir(path)
+    assert config.dir_exposure(path) == []
+    _loosen_dir(path)
+    assert config.dir_exposure(path) != []
+
+
+def test_an_existing_folder_is_restricted_and_says_what_it_found(tmp_path):
+    path = tmp_path / 'rephemeral'
+    config.make_private_dir(path)
+    _loosen_dir(path)
+
+    widened = config.restrict_existing_dir(path)
+
+    assert widened != []                       # reports what it found
+    assert config.dir_exposure(path) == []     # and fixes it
+    if os.name != 'nt':
+        assert path.stat().st_mode & 0o777 == 0o700
+    # Nothing to do the second time, and nothing to report.
+    assert config.restrict_existing_dir(path) == []
+
+
+def test_restricting_a_missing_folder_is_not_an_error(tmp_path):
+    assert config.restrict_existing_dir(tmp_path / 'absent') == []
+
+
+def _loosen_dir(path):
+    """Make a directory writable by others, the way each platform allows."""
+    if os.name == 'nt':
+        from rephemeral import winacl
+        winacl.set_dacl(path, f'D:P(A;;FA;;;{winacl.current_user_sid()})(A;;FA;;;BU)')
+    else:
+        path.chmod(0o775)
+
+
 def test_created_private_dir_is_readable_only_by_its_owner(tmp_path):
     path = tmp_path / 'new' / 'rephemeral'
     config.make_private_dir(path)

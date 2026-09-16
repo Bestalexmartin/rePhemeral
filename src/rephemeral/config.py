@@ -102,18 +102,51 @@ def key_exposure(path: Path) -> list[str]:
             if mode & bits]
 
 
+def dir_exposure(path: Path) -> list[str]:
+    """Who else can write into path. Empty when only its owner can.
+
+    A private key inside a folder others can write to is not much of a
+    secret: they cannot read it, but they can replace it, and the config
+    beside it that says which host to hand it to. Installs made before
+    this tool created its own folder have exactly that shape, a 775
+    directory holding a 600 key.
+    """
+    if os.name == "nt":
+        from . import winacl
+        return [name for _sid, name in winacl.other_writers(path)]
+    mode = stat.S_IMODE(path.stat().st_mode)
+    return [who for who, bits in (("its group", 0o020), ("other users", 0o002))
+            if mode & bits]
+
+
 def make_private_dir(path: Path) -> None:
     """Create path if it is missing, restricted to its owner.
 
     Files written into a directory created here inherit that restriction.
     An existing directory is left as it is, since it may hold more than
-    this tool's files.
+    this tool's files. `restrict_existing_dir` is the deliberate exception.
     """
     if path.is_dir():
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.mkdir()
     restrict_private(path)
+
+
+def restrict_existing_dir(path: Path) -> list[str]:
+    """Restrict a directory the tool owns, even if it was already there.
+
+    Returns whoever could write into it beforehand, so the caller can say
+    what it changed. Callers must only point this at the tool's own
+    location: a directory someone chose with REPHEMERAL_CONFIG_DIR may be
+    shared on purpose, and this would quietly lock their collaborators out.
+    """
+    if not path.is_dir():
+        return []
+    exposed = dir_exposure(path)
+    if exposed:
+        restrict_private(path)
+    return exposed
 
 
 def write_private(path: Path, data: bytes) -> None:
