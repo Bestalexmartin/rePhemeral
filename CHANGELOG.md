@@ -8,6 +8,25 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- Windows Administrators no longer count when deciding whether a folder is
+  exposed. They have full control of nearly every folder under a profile
+  by inheritance, so counting them would warn almost every older install
+  about the ordinary state of the machine, and an administrator can take
+  ownership of anything regardless. The ACLs this tool writes still leave
+  Administrators out; they are simply not a reason to warn or to tighten.
+  `config.dir_exposure` takes `include_administrators` for callers that
+  want the unfiltered answer.
+- The message for a changed host key, and the note `setup` prints after
+  recording one, now point at `rephemeral trust-key` rather than
+  `setup --trust-new-key`, since the lighter command does the job without
+  a password.
+- `setup` no longer claims that nothing has been changed when it cannot
+  read a password. By then it may have generated the keypair and
+  restricted the configuration folder. It now says what it did not do:
+  nothing was sent to the tablet and no key was installed.
+
 ### Added
 
 - `rephemeral trust-key` records the host key the tablet offers now, and

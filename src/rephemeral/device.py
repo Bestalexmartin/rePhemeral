@@ -211,9 +211,10 @@ class Device:
                 f"Nothing was sent to it: neither the key at "
                 f"{self.key_path or 'the configured path'} nor a password.\n"
                 f"If you reset the tablet or enabled developer mode, this is "
-                f"expected, and `rephemeral setup --trust-new-key` records the "
-                f"new key. Otherwise something other than your tablet is "
-                f"answering. Recorded keys are in {self.known_hosts}."
+                f"expected, and `rephemeral trust-key` records the new key "
+                f"without asking for a password. Otherwise something other "
+                f"than your tablet is answering. Recorded keys are in "
+                f"{self.known_hosts}."
             ) from exc
         except DeviceError:
             self.close()

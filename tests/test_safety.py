@@ -87,6 +87,36 @@ def test_a_folder_others_can_write_to_is_reported(tmp_path):
     assert config.dir_exposure(path) != []
 
 
+ADMINS = ('S-1-5-32-544', 'BUILTIN\\Administrators')
+USERS = ('S-1-5-32-545', 'BUILTIN\\Users')
+
+
+@pytest.mark.parametrize('writers, reported', [
+    ([ADMINS], []),
+    ([ADMINS, USERS], ['BUILTIN\\Users']),
+    ([USERS], ['BUILTIN\\Users']),
+    ([], []),
+])
+def test_windows_administrators_are_not_a_reason_to_warn(writers, reported):
+    """Administrators hold full control of nearly every profile folder.
+
+    Counting them would warn almost every older install about the ordinary
+    state of the machine, and an administrator can take ownership anyway.
+    The ACLs the tool writes still leave them out; this is only about what
+    is worth reporting.
+
+    The rule is called for real here. It lives apart from the ACL reading
+    so it can be tested on any platform: faking os.name instead makes
+    pathlib build WindowsPath objects and takes pytest down with it.
+    """
+    assert config.notable_writers(writers) == reported
+
+
+def test_asking_for_administrators_gets_them_back():
+    assert config.notable_writers([ADMINS, USERS], include_administrators=True) == [
+        'BUILTIN\\Administrators', 'BUILTIN\\Users']
+
+
 def test_an_existing_folder_is_restricted_and_says_what_it_found(tmp_path):
     path = tmp_path / 'rephemeral'
     config.make_private_dir(path)

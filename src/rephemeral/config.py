@@ -102,7 +102,29 @@ def key_exposure(path: Path) -> list[str]:
             if mode & bits]
 
 
-def dir_exposure(path: Path) -> list[str]:
+#: Windows gives BUILTIN\\Administrators full control of nearly every folder
+#: under a profile, by inheritance. Counting that as an exposure would warn
+#: almost every older install about the ordinary state of the machine, and
+#: a warning that is always on is a warning nobody reads. An administrator
+#: can take ownership of anything regardless, so the warning would also be
+#: telling people about a boundary that was never there. `winacl.restrict`
+#: still leaves Administrators out of any ACL it writes; they are simply not
+#: a reason to warn.
+ADMINISTRATORS_SID = "S-1-5-32-544"
+
+
+def notable_writers(writers: list[tuple[str, str]],
+                    include_administrators: bool = False) -> list[str]:
+    """The names worth reporting, from (SID, name) pairs.
+
+    Kept separate from the ACL reading so the rule can be tested anywhere,
+    rather than only on the platform that produces such pairs.
+    """
+    return [name for sid, name in writers
+            if include_administrators or sid != ADMINISTRATORS_SID]
+
+
+def dir_exposure(path: Path, include_administrators: bool = False) -> list[str]:
     """Who else can write into path. Empty when only its owner can.
 
     A private key inside a folder others can write to is not much of a
@@ -110,10 +132,13 @@ def dir_exposure(path: Path) -> list[str]:
     beside it that says which host to hand it to. Installs made before
     this tool created its own folder have exactly that shape, a 775
     directory holding a 600 key.
+
+    Windows Administrators are ignored unless asked for; see
+    ADMINISTRATORS_SID.
     """
     if os.name == "nt":
         from . import winacl
-        return [name for _sid, name in winacl.other_writers(path)]
+        return notable_writers(winacl.other_writers(path), include_administrators)
     mode = stat.S_IMODE(path.stat().st_mode)
     return [who for who, bits in (("its group", 0o020), ("other users", 0o002))
             if mode & bits]

@@ -56,11 +56,23 @@ def test_store_is_created_private_and_restored_if_loosened(store):
     assert config.key_exposure(path) == []
     if os.name != 'nt':
         assert path.stat().st_mode & 0o777 == 0o600
-        # paramiko's save writes the file itself at whatever the umask
-        # allows, so ensure_store has to put the restriction back.
+
+    # paramiko's save writes the file itself, at whatever the umask allows
+    # or with whatever the folder grants, so ensure_store has to put the
+    # restriction back. Loosening differs per platform; the check does not.
+    _loosen_file(path)
+    assert config.key_exposure(path) != []
+    hostkey.ensure_store(store)
+    assert config.key_exposure(path) == []
+
+
+def _loosen_file(path):
+    """Let others read a file, the way each platform allows."""
+    if os.name == 'nt':
+        from rephemeral import winacl
+        winacl.set_dacl(path, f'D:P(A;;FA;;;{winacl.current_user_sid()})(A;;FR;;;BU)')
+    else:
         path.chmod(0o644)
-        hostkey.ensure_store(store)
-        assert config.key_exposure(path) == []
 
 
 def test_recording_then_forgetting_a_key(store, keys):
@@ -129,7 +141,9 @@ def test_a_changed_key_refuses_and_names_both_fingerprints(client, store, keys):
     message = str(raised.value)
     assert device.fingerprint(expected) in message
     assert device.fingerprint(offered) in message
-    assert 'setup --trust-new-key' in message
+    # The lighter command, not `setup --trust-new-key`: a changed key needs
+    # the pin replaced, not the keypair reinstalled, so it needs no password.
+    assert 'trust-key' in message
     assert str(store) in message
     # The session is dropped, and the password is not left on the object.
     client.close.assert_called_once()
@@ -300,13 +314,25 @@ def test_setup_leaves_an_overridden_config_folder_alone(setup_run, tmp_path,
     # purpose, so setup reports nothing and changes nothing there.
     monkeypatch.setenv('REPHEMERAL_CONFIG_DIR', str(tmp_path))
     _, run = setup_run
-    if os.name != 'nt':
-        tmp_path.chmod(0o775)
+    _loosen_dir_here(tmp_path)
+    before = config.dir_exposure(tmp_path, include_administrators=True)
+    assert before != []                     # the folder really is open
 
-        assert run('hunter2') == 0
+    assert run('hunter2') == 0
 
-        assert tmp_path.stat().st_mode & 0o777 == 0o775
-        assert 'Restricted' not in capsys.readouterr().out
+    # Untouched, and not mentioned: an overridden folder may be shared.
+    assert config.dir_exposure(tmp_path, include_administrators=True) == before
+    assert 'Restricted' not in capsys.readouterr().out
+
+
+def _loosen_dir_here(path):
+    """Let others write into a directory, the way each platform allows."""
+    if os.name == 'nt':
+        from rephemeral import winacl
+        winacl.set_dacl(path, f'D:P(A;OICI;FA;;;{winacl.current_user_sid()})'
+                              f'(A;OICI;FA;;;BU)')
+    else:
+        path.chmod(0o775)
 
 
 @pytest.fixture

@@ -163,8 +163,13 @@ def cmd_setup(args: argparse.Namespace) -> int:
         # Not the same as someone pressing Ctrl+C: the terminal gave this
         # process no input at all, which is worth saying rather than
         # reporting as a deliberate abort.
+        # Not "nothing has been changed": by this point setup may have
+        # generated the keypair and restricted the configuration folder.
+        # What it has certainly not done is talk to the tablet.
         print("No password could be read: this terminal provided no input. "
-              "Nothing has been changed.", file=sys.stderr)
+              "Nothing was sent to the tablet and no key was installed. The "
+              "keypair and the configuration folder are as the lines above "
+              "left them.", file=sys.stderr)
         return 1
     if not password:
         print("No password entered; aborted.", file=sys.stderr)
@@ -199,7 +204,8 @@ def cmd_setup(args: argparse.Namespace) -> int:
         print(f"  {now}")
         print("From now on a different key stops the tool rather than "
               "connecting. After a factory reset, or after enabling developer "
-              "mode, run `rephemeral setup --trust-new-key`.")
+              "mode, `rephemeral trust-key` records the new one without "
+              "asking for a password.")
     elif now and args.trust_new_key:
         # Re-trusted, and the tablet offered what it offered before. Worth
         # saying plainly, since the run began by forgetting a key.
