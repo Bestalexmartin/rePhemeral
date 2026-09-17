@@ -246,6 +246,13 @@ Three rules keep the stock art safe:
    recorded by hash. If it is ever asked to capture "stock" art whose hash
    it recognizes as something it wrote, it refuses, because recording a
    custom image as stock would destroy the only copy of the original.
+   That check needs a record to consult, so there is a second one for when
+   there is none: a computer meeting a tablet for the first time refuses
+   to capture a screen that was modified after the firmware was installed.
+   A factory reset erases the tablet's backups but not its screens, so
+   custom art can outlive everything that could identify it. If you know
+   the screens are the originals, `rephemeral backup --assume-stock` says
+   so.
 3. **Backup before write, every time.** Not at install time and not on a
    best-effort basis. If the capture fails, the write does not happen.
 

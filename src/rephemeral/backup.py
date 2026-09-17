@@ -56,6 +56,38 @@ class BackupError(RuntimeError):
     pass
 
 
+def _ago(seconds: int) -> str:
+    """A rough span, for saying how long after a build a file was written."""
+    days, rest = divmod(max(seconds, 0), 86400)
+    hours = rest // 3600
+    if days and hours:
+        return f"{days} day{'s' if days != 1 else ''} and {hours} hour{'s' if hours != 1 else ''}"
+    if days:
+        return f"{days} day{'s' if days != 1 else ''}"
+    if hours:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return f"{rest // 60} minutes"
+
+
+class StockLooksModified(BackupError):
+    """Asked to capture a screen written after the firmware was laid down.
+
+    The firmware stamps its files with the build time, so a later mtime
+    means something wrote that screen afterwards. Normally the manifest
+    settles whether that something was this tool, but when a tablet's
+    /home has been erased and this computer has never seen the tablet
+    before, there is no manifest to consult and `is_ours` has nothing to
+    compare against. A factory reset erases /home and leaves the rootfs
+    alone, so exactly that combination puts custom art in front of a tool
+    with no memory of it.
+
+    Refusing is the safe answer: capturing would record someone's custom
+    image as the only surviving copy of the stock art. Restoring a screen
+    also updates its mtime, so a genuinely stock screen can be refused
+    this way; `assume_stock` is the way past it.
+    """
+
+
 class StockAlreadyLost(BackupError):
     """Asked to capture stock art, but the device is already customised.
 
@@ -143,6 +175,15 @@ class BackupStore:
         self.host_dir = (host_root or HOST_BACKUP_ROOT) / build
         self.device_dir = posixpath.join(DEVICE_BACKUP_ROOT, build)
         self.manifest = self._load()
+        #: True when nothing on this computer or the tablet knew anything
+        #: about this build when the store opened. Recorded once, here,
+        #: because capturing the first screen makes the manifest non-empty
+        #: and the question would otherwise answer itself differently for
+        #: every screen after it. See StockLooksModified.
+        self.arrived_empty = not any(
+            rec.stock_sha256 or rec.applied
+            for rec in self.manifest.screens.values()
+        )
 
     # -- manifest persistence -----------------------------------------
 
@@ -220,10 +261,67 @@ class BackupStore:
     def needs_capture(self, screen: Screen) -> bool:
         return self.manifest.record(screen.key).stock_sha256 is None
 
-    def capture(self, screen: Screen) -> ScreenRecord:
+    #: How far after the build a file may be stamped and still be taken for
+    #: stock. The firmware writes its files within one image build, so this
+    #: only has to absorb ordering inside that, not weeks of use.
+    BUILD_TOLERANCE_SECONDS = 600
+
+    def _build_timestamp(self) -> int | None:
+        """The build string as an epoch, or None if it is not a timestamp.
+
+        Builds are named for when they were made, 20260827113527 being
+        2026-08-27 11:35:27 UTC, and the firmware stamps the files it lays
+        down with that time. A build named some other way simply disables
+        the check rather than breaking it.
+        """
+        try:
+            when = datetime.strptime(self.build, "%Y%m%d%H%M%S")
+        except ValueError:
+            return None
+        return int(when.replace(tzinfo=UTC).timestamp())
+
+    def _refuse_if_written_after_firmware(self, screen: Screen) -> None:
+        """Refuse a screen that was written after the firmware was installed.
+
+        Only reached when nothing on this computer or the tablet knew
+        anything about this build, which is the one moment the tool cannot
+        tell stock art from someone else's custom image. See
+        StockLooksModified.
+        """
+        built = self._build_timestamp()
+        if built is None:
+            return
+        try:
+            written = int(self.device.mtime(screen.path))
+        except Exception:
+            # No timestamp, no evidence, no grounds to refuse. The other
+            # two rules still stand, and a guard that cannot read a clock
+            # must not be able to stop a capture that is otherwise sound.
+            return
+        if written <= built + self.BUILD_TOLERANCE_SECONDS:
+            return
+        raise StockLooksModified(
+            f"{screen.key}: {screen.path} was last written "
+            f"{_ago(written - built)} after firmware {self.build} was "
+            f"installed, so it may be someone else's custom image rather "
+            f"than stock art. Nothing on this computer or on the tablet "
+            f"knows this build, which is what a factory reset leaves "
+            f"behind: it erases the tablet's backups but not the screens. "
+            f"Capturing now could record a custom image as the only "
+            f"surviving copy of the original. If you know these are the "
+            f"originals, for instance because you restored them, run "
+            f"`rephemeral backup --assume-stock`."
+        )
+
+    def capture(self, screen: Screen, assume_stock: bool = False) -> ScreenRecord:
         """Back up one screen's current image, if not already captured.
 
         Write-once: an existing record is returned untouched.
+
+        `assume_stock` overrides the modified-after-the-firmware refusal,
+        for someone who knows the screens are the originals. It cannot
+        override `StockAlreadyLost`, which rests on a recorded fact rather
+        than on a heuristic.
         """
         rec = self.manifest.record(screen.key)
         if rec.stock_sha256 is not None:
@@ -243,6 +341,9 @@ class BackupStore:
                 f"Refusing to record a custom image as stock. Restore this "
                 f"screen from another backup, or reflash, before capturing."
             )
+
+        if self.arrived_empty and not assume_stock:
+            self._refuse_if_written_after_firmware(screen)
 
         data = self.device.read_bytes(screen.path)
         if hashlib.sha256(data).hexdigest() != current:
@@ -264,7 +365,8 @@ class BackupStore:
         rec.backup_file = filename
         return rec
 
-    def capture_all(self, screens: tuple[Screen, ...]) -> dict[str, str]:
+    def capture_all(self, screens: tuple[Screen, ...],
+                    assume_stock: bool = False) -> dict[str, str]:
         """Capture every screen. Returns key -> status."""
         results: dict[str, str] = {}
         for s in screens:
@@ -272,7 +374,7 @@ class BackupStore:
                 results[s.key] = "already backed up"
                 continue
             try:
-                self.capture(s)
+                self.capture(s, assume_stock=assume_stock)
                 self.save()
                 results[s.key] = "captured"
             except BackupError as exc:

@@ -334,6 +334,18 @@ class Device:
         except FileNotFoundError:
             return False
 
+    def mtime(self, path: str) -> int:
+        """When path was last written, in seconds since the epoch.
+
+        The firmware stamps the files it lays down with the build time, so
+        a screen modified later than that was written by something else.
+        That is the only evidence available when a tablet's own backups
+        have been erased and this computer has never seen it before.
+        """
+        if self._sftp is None:
+            raise DeviceError("not connected")
+        return int(self._sftp.stat(path).st_mtime)
+
     def readlink(self, path: str) -> str | None:
         rc, out, _ = self.run(f"readlink {_q(path)}")
         return out.strip() if rc == 0 and out.strip() else None

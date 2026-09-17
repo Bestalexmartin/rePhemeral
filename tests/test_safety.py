@@ -87,6 +87,117 @@ def test_a_folder_others_can_write_to_is_reported(tmp_path):
     assert config.dir_exposure(path) != []
 
 
+BUILD = '20260827113527'
+BUILT_AT = 1787830527          # the build string as an epoch
+CUSTOM = b'a custom image another computer wrote'
+
+
+def _wiped_tablet(mtime, image=CUSTOM):
+    """A tablet whose /home is empty, holding `image` on the rootfs.
+
+    What a factory reset leaves: the backups are gone, the screens are not.
+    """
+    device = MagicMock()
+    device.exists.side_effect = lambda path: not path.startswith('/home/')
+    device.sha256.return_value = hashlib.sha256(image).hexdigest()
+    device.read_bytes.return_value = image
+    device.mtime.return_value = mtime
+    return device
+
+
+def test_a_screen_written_after_the_firmware_is_refused(tmp_path):
+    # The dangerous sequence: /home wiped, custom art still on the rootfs,
+    # and a computer that has never seen this tablet. Nothing can vouch for
+    # the image, so capturing it would record it as the only stock copy.
+    device = _wiped_tablet(BUILT_AT + 14 * 86400)
+    store = BackupStore(device, build=BUILD, host_root=tmp_path)
+    assert store.arrived_empty
+
+    with pytest.raises(BackupError) as raised:
+        store.capture(screens.get('suspended'))
+
+    message = str(raised.value)
+    assert '14 days' in message
+    assert '--assume-stock' in message
+    device.write_home_bytes.assert_not_called()
+    assert not list(tmp_path.rglob('*.png'))
+
+
+def test_assume_stock_captures_it_anyway(tmp_path):
+    device = _wiped_tablet(BUILT_AT + 14 * 86400)
+    store = BackupStore(device, build=BUILD, host_root=tmp_path)
+
+    rec = store.capture(screens.get('suspended'), assume_stock=True)
+
+    assert rec.stock_sha256 == hashlib.sha256(CUSTOM).hexdigest()
+
+
+def test_a_screen_stamped_at_the_build_is_captured(tmp_path):
+    # A tablet nobody has customised: the firmware's own files, so the
+    # ordinary first run is untouched by any of this.
+    device = _wiped_tablet(BUILT_AT + 30)
+    store = BackupStore(device, build=BUILD, host_root=tmp_path)
+
+    rec = store.capture(screens.get('suspended'))
+
+    assert rec.stock_sha256 is not None
+
+
+def test_a_host_that_already_knows_the_build_is_not_checked(tmp_path):
+    # The common case, and why three platforms never hit this: a manifest
+    # settles what is stock, so the mtime is irrelevant.
+    build_dir = tmp_path / BUILD
+    build_dir.mkdir(parents=True)
+    stock = b'genuine stock art'
+    (build_dir / 'suspended.png').write_bytes(stock)
+    (build_dir / 'manifest.json').write_text(json.dumps({
+        'schema': 1, 'build': BUILD, 'board': '', 'created_at': '2026-08-27T00:00:00Z',
+        'screens': {'suspended': {'stock_sha256': hashlib.sha256(stock).hexdigest(),
+                                  'backup_file': 'suspended.png', 'applied': []}},
+    }))
+    device = _wiped_tablet(BUILT_AT + 14 * 86400)
+
+    store = BackupStore(device, build=BUILD, host_root=tmp_path)
+
+    assert not store.arrived_empty
+    # Already recorded, so it returns the record untouched and never asks.
+    store.capture(screens.get('suspended'))
+    device.mtime.assert_not_called()
+
+
+@pytest.mark.parametrize('build', ['not-a-timestamp', '20260230113527'])
+def test_a_build_that_is_not_a_timestamp_disables_the_check(tmp_path, build):
+    device = _wiped_tablet(BUILT_AT + 14 * 86400)
+    store = BackupStore(device, build=build, host_root=tmp_path)
+
+    assert store.capture(screens.get('suspended')).stock_sha256 is not None
+    device.mtime.assert_not_called()
+
+
+def test_an_unreadable_mtime_is_not_grounds_to_refuse(tmp_path):
+    device = _wiped_tablet(BUILT_AT + 14 * 86400)
+    device.mtime.side_effect = DeviceError('no such file')
+    store = BackupStore(device, build=BUILD, host_root=tmp_path)
+
+    assert store.capture(screens.get('suspended')).stock_sha256 is not None
+
+
+def test_mtime_reads_the_tablet_side_timestamp():
+    device = Device()
+    device._sftp = MagicMock()
+    device._sftp.stat.return_value = MagicMock(st_mtime=1787830527.9)
+
+    # Whole seconds: the comparison is against a build timestamp that has
+    # no sub-second part either.
+    assert device.mtime('/usr/share/remarkable/suspended.png') == 1787830527
+    device._sftp.stat.assert_called_once_with('/usr/share/remarkable/suspended.png')
+
+
+def test_mtime_needs_a_connection():
+    with pytest.raises(DeviceError):
+        Device().mtime('/usr/share/remarkable/suspended.png')
+
+
 ADMINS = ('S-1-5-32-544', 'BUILTIN\\Administrators')
 USERS = ('S-1-5-32-545', 'BUILTIN\\Users')
 

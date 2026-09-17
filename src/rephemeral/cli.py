@@ -274,7 +274,8 @@ def cmd_backup(args: argparse.Namespace) -> int:
     with _connect(cfg) as d:
         store, info = _store(d)
         print(f"Capturing stock screens for build {info.build}")
-        results = store.capture_all(screens.SCREENS)
+        results = store.capture_all(screens.SCREENS,
+                                    assume_stock=args.assume_stock)
         for key, status in results.items():
             print(f"  {key:<16} {status}")
         print(f"\nHost copy:   {store.host_dir}")
@@ -441,6 +442,10 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_status)
 
     s = sub.add_parser("backup", help="capture the stock screens")
+    s.add_argument("--assume-stock", action="store_true",
+                   help="capture screens that were modified after the firmware "
+                        "was installed. Only say this if you know they are the "
+                        "originals, for instance because you restored them.")
     s.set_defaults(func=cmd_backup)
 
     s = sub.add_parser("screens", help="list the replaceable screens")

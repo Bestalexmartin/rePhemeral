@@ -8,6 +8,30 @@ While the major version is 0, a minor bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Security
+
+- A screen written after the firmware was installed is no longer captured
+  as stock art when nothing knows the tablet. Until now, a computer
+  meeting a tablet for the first time treated whatever was on the rootfs
+  as the originals. That is right for a tablet nobody has customised, and
+  wrong after a factory reset: a reset erases `/home`, where the tablet's
+  own backups live, and leaves the rootfs alone, so someone else's custom
+  screens survive with nothing left to identify them. Capturing then would
+  record a custom image as the only surviving copy of the original, which
+  is the failure this whole design exists to prevent.
+- The evidence is the timestamp. A build is named for when it was made,
+  `20260827113527` being 2026-08-27 11:35:27, and the firmware stamps the
+  files it lays down with that time, so a screen modified days later was
+  written by something else. The check runs only when neither this
+  computer nor the tablet knows anything about the build, which is the one
+  moment there is nothing better to go on, and never on a machine that has
+  backed the tablet up before.
+- Restoring a screen also updates its timestamp, so a genuinely stock
+  screen can be refused this way. `rephemeral backup --assume-stock` is
+  the way past it, for someone who knows the screens are the originals.
+  It cannot override the older refusal, which rests on a recorded hash
+  rather than on a timestamp.
+
 ### Changed
 
 - Windows Administrators no longer count when deciding whether a folder is
