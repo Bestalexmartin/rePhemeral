@@ -82,6 +82,34 @@ While the major version is 0, a minor bump may contain breaking changes.
   with `REPHEMERAL_CONFIG_DIR` is reported but never restricted, since it
   may be shared deliberately.
 
+### Notes
+
+- 0.9.0 and every change above are verified on Windows 11 Home 25H2,
+  Python 3.12.10, against a live Paper Pro on build `20260827113527`.
+  Checked there: the host key store created readable only by its owner and
+  SYSTEM; first contact recording the same fingerprint macOS and Ubuntu
+  recorded; a changed key refused before authentication, naming both
+  fingerprints and pointing at `rephemeral trust-key`, which then put the
+  store back byte for byte without asking for a password; `setup` stopping
+  before its password prompt; an address that never answers failing in
+  about eight seconds rather than hanging; the configuration folder's ACL,
+  where write access for `BUILTIN\Users` is reported and restricted while
+  inherited Administrators are not; timestamps read from the tablet, with
+  the firmware build read as UTC on a machine set to Pacific time; and
+  112 tests passing, with the two that need a POSIX shell skipped.
+  Nothing needed changing.
+- The same changes are verified on Ubuntu, on the machine that verified
+  0.8.0, against the same tablet. Its configuration folder was still
+  group-writable from an install predating the restriction, so that case
+  was checked for real rather than recreated: the inspector warned that
+  its group could write to it, and `setup`, run with no terminal input,
+  restricted the folder, said so, and stopped before sending anything,
+  with the keypair untouched. Having no host key recorded yet, it recorded
+  the tablet's on first contact without being asked. A changed key was
+  refused, naming `rephemeral trust-key`, which put the store back byte
+  for byte; timestamps and the firmware build read as they do on Windows;
+  and all 114 tests pass. Nothing needed changing.
+
 ## [0.9.0] - 2026-09-15
 
 ### Security
